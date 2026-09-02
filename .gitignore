@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Logs / temporary
+*.log
+*.tmp
+.DS_Store
+
+# Local settings (if any)
+*.local

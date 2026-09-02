@@ -1,0 +1,4 @@
+{
+  "_note": "Roles/components shown as checkboxes on the 'Roles & Components' tab. Add entries to define what gets installed. See roles.example.json. Each entry: { \"name\": \"<Install-WindowsFeature feature name>\", \"display\": \"<label shown in the GUI>\" }.",
+  "roles": []
+}

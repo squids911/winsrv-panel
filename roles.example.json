@@ -1,0 +1,17 @@
+{
+  "_note": "EXAMPLE role list. Copy the entries you need into roles.json. Feature names are for Install-WindowsFeature (ServerManager).",
+  "roles": [
+    { "name": "RDS-Licensing", "display": "Remote Desktop Licensing (сервер лицензирования)" },
+    { "name": "RDS-Licensing-UI", "display": "Remote Desktop Licensing UI (Licensing Manager)" },
+    { "name": "RDS-RD-Server", "display": "Remote Desktop Session Host" },
+    { "name": "RDS-Connection-Broker", "display": "Remote Desktop Connection Broker" },
+    { "name": "RDS-Web-Access", "display": "Remote Desktop Web Access" },
+    { "name": "RDS-Gateway", "display": "Remote Desktop Gateway" },
+    { "name": "Web-Server", "display": "Web Server (IIS)" },
+    { "name": "DNS", "display": "DNS Server" },
+    { "name": "DHCP", "display": "DHCP Server" },
+    { "name": "FS-FileServer", "display": "File Services" },
+    { "name": "Net-Framework-Core", "display": ".NET Framework 4.x Core" },
+    { "name": "RSAT-AD-PowerShell", "display": "RSAT: Active Directory PowerShell" }
+  ]
+}
