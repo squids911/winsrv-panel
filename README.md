@@ -1,5 +1,9 @@
 # Панель настройки Windows Server 2025
 
+![Python](https://img.shields.io/badge/Python-3.8+-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
+![Build](https://github.com/squids911/winsrv-panel/actions/workflows/build.yml/badge.svg)
+
 Модульная панель на **Python (Tkinter)** + **PowerShell**. Это **не только RDS** —
 это каркас для настройки самых разных параметров Windows Server. RDS — один из
 разделов (модулей), остальные добавляются простым созданием папки.
@@ -51,8 +55,12 @@ modules/<id>/scripts/*.ps1       # PowerShell-скрипты
 | `system` | 20 | Система | Сведения о сервере, активация Windows (`slmgr`) |
 | `network` | 30 | Сеть | Список адаптеров, статический IP/DNS |
 | `rds` | 40 | Remote Desktop Services | Активация лицензирования, установка CAL (Enterprise), локальные политики |
-| `security` | 50 | Безопасность | Сводка (RDP, брандмауэр, группа Remote Desktop Users) — пример расширения |
+| `rdscollections` | 45 | RDS — коллекции | Список и создание RD Session Collections (`New-RDSessionCollection`) |
+| `security` | 50 | Безопасность | Сводка (RDP, брандмауэр, группа Remote Desktop Users) |
+| `ad` | 55 | Active Directory | Установка AD DS, повышение до контроллера домена |
 | `services` | 60 | Службы | Список служб, запуск/остановка/перезапуск |
+| `localusers` | 65 | Пользователи и группы | Список, создание пользователя, добавление в группу (в т.ч. Remote Desktop Users) |
+| `disks` | 75 | Диски и тома | Список дисков/томов, расширение тома |
 
 RDS внутри имеет под-вкладки: **Активация**, **Лицензии (CAL)**, **Локальные политики**.
 
@@ -140,15 +148,18 @@ class Panel(BasePanel):
 
 ## Структура проекта
 ```
-rds-deploy-gui/
+winsrv-panel/
 ├─ gui.py                # главное окно: дерево + модули + журнал
 ├─ framework.py          # BasePanel, пути, реестровое хранилище, обнаружение модулей
 ├─ roles.json            # список ролей (встраивается в exe)
 ├─ roles.example.json    # примеры ролей
 ├─ run.bat               # запуск из исходников (от администратора)
 ├─ build.bat             # сборка WinSrvPanel.exe (PyInstaller)
+├─ .github/workflows/    # CI: автосборка exe
+├─ LICENSE               # MIT
 ├─ README.md
-└─ modules/              # разделы (см. выше)
+└─ modules/              # разделы (см. выше): roles, system, network, rds,
+                         # rdscollections, security, ad, services, localusers, disks
 ```
 Настройки в файле не хранятся — только в реестре `HKCU\Software\WinSrvPanel`
 и во встроенных умолчаниях exe.
@@ -164,3 +175,13 @@ rds-deploy-gui/
   Если CAL даст ненулевой `ReturnValue`, проверьте актуальный код в Remote Desktop
   Licensing Manager и поправьте поле «Версия продукта» в интерфейсе. CAL 2025
   ставит только лицензионный сервер на WS 2025 (у вас так и есть).
+
+## Автоматическая сборка EXE (GitHub Actions)
+
+Workflow `.github/workflows/build.yml` при push в `main` (или вручную из вкладки
+**Actions**) на runner `windows-latest` собирает `WinSrvPanel.exe` и публикует его
+как **artifact**. Секреты/токены для этого не нужны — только сам репозиторий.
+
+## Лицензия
+
+Проект распространяется под лицензией **MIT** — см. файл `LICENSE`.
