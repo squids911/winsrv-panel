@@ -61,6 +61,7 @@ class DeployApp(tk.Tk):
         self.cfg = fw.registry_read(self.schema)
 
         self.log_queue = queue.Queue()
+        self.events_queue = queue.Queue()
         self.running = False
         self._panel_instances = {}
         self._frame_shown = None
@@ -213,6 +214,30 @@ class DeployApp(tk.Tk):
         self._set_busy(True)
         threading.Thread(target=self._run_process, args=(cmd,), daemon=True).start()
 
+    def run_capture(self, panel, script_name, args, on_done):
+        """Запускает скрипт, собирает stdout ПОЛНОСТЬЮ и отдаёт результат
+        (rc, stdout, stderr) в callback on_done (выполняется в главном потоке).
+        Используется для запросов структурированных данных (например, JSON)."""
+        script = os.path.join(panel.scripts_dir, script_name)
+        if not os.path.exists(script):
+            messagebox.showerror("Ошибка", f"Скрипт не найден: {script}")
+            return
+        exe = self.cfg.get("powershell", {}).get("exe", "powershell")
+        cmd = [exe, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script] + args
+
+        def worker():
+            try:
+                proc = subprocess.run(
+                    cmd, capture_output=True, text=True, encoding="utf-8",
+                    errors="replace", timeout=180, creationflags=fw.CREATE_NO_WINDOW,
+                )
+                payload = (proc.returncode, proc.stdout, proc.stderr)
+            except Exception as e:
+                payload = (-1, "", str(e))
+            self.events_queue.put(("capture", on_done, payload))
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _run_process(self, cmd):
         try:
             proc = subprocess.Popen(
@@ -243,6 +268,19 @@ class DeployApp(tk.Tk):
                     self._append_log(item)
         except queue.Empty:
             pass
+
+        # События (capture-запросы) — выполняем callback в главном потоке.
+        try:
+            while True:
+                kind, cb, payload = self.events_queue.get_nowait()
+                if kind == "capture":
+                    try:
+                        cb(payload)
+                    except Exception as e:
+                        self._append_log(f"\n[Ошибка обработки данных]: {e}\n")
+        except queue.Empty:
+            pass
+
         self.after(100, self._poll_log_queue)
 
     def _set_busy(self, busy):
