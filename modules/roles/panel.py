@@ -120,8 +120,15 @@ class Panel(BasePanel):
         self.checked = {name: True for name in self.checked if self._exists(name)}
         self._rebuild()
         installed = sum(1 for f in self.features if f.get("Installed"))
-        self.lbl_hint.config(text=f"Всего: {len(self.features)} (установлено: {installed}). "
-                                  "Клик по строке — отметить/снять галочку.")
+        if self.features:
+            self.lbl_hint.config(text=f"Всего: {len(self.features)} (установлено: {installed}). "
+                                      "Клик по строке — отметить/снять галочку.")
+            self.lbl_count.config(text=f"Отмечено: {sum(self.checked.values())} / {len(self.features)}")
+        else:
+            self.lbl_hint.config(
+                text="Список ролей/компонентов пуст. Это типично для клиентской Windows "
+                     "(Home/Pro/Enterprise): командлет Get-WindowsFeature доступен на "
+                     "Windows Server. На сервере/виртуалке список заполнится автоматически.")
         self.app.status_var.set("Список ролей загружен.")
 
     def _exists(self, name):
