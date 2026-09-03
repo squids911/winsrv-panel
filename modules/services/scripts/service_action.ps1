@@ -1,4 +1,4 @@
-# service_action.ps1 — start / stop / restart / status for a service.
+# service_action.ps1 - start / stop / restart / status for a service.
 # NOTE: keep ASCII-only.
 
 [CmdletBinding()]
@@ -10,6 +10,9 @@ param(
     [ValidateSet("Start", "Stop", "Restart", "Status")]
     [string]$Action = "Status"
 )
+# Force UTF-8 output so the GUI (Python) decodes Russian/system text correctly.
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+$OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ErrorActionPreference = "Stop"
 

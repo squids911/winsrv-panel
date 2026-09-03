@@ -13,6 +13,9 @@ param(
 
     [switch]$IncludeManagementTools
 )
+# Force UTF-8 output so the GUI (Python) decodes Russian/system text correctly.
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+$OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ErrorActionPreference = "Continue"
 

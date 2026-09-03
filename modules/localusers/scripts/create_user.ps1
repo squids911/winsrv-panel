@@ -15,6 +15,9 @@ param(
     [Parameter(Mandatory = $false)]
     [string]$Group = ""
 )
+# Force UTF-8 output so the GUI (Python) decodes Russian/system text correctly.
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+$OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ErrorActionPreference = "Stop"
 

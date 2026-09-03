@@ -1,4 +1,4 @@
-# set_nic.ps1 — sets a static IPv4 address / gateway / DNS on an adapter.
+# set_nic.ps1 - sets a static IPv4 address / gateway / DNS on an adapter.
 # NOTE: keep ASCII-only.
 
 [CmdletBinding()]
@@ -18,6 +18,9 @@ param(
     [Parameter(Mandatory = $false)]
     [string]$Dns = ""
 )
+# Force UTF-8 output so the GUI (Python) decodes Russian/system text correctly.
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+$OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ErrorActionPreference = "Stop"
 

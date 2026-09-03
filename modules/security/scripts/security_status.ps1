@@ -1,6 +1,9 @@
-# security_status.ps1 — quick security summary (extensible example).
+# security_status.ps1 - quick security summary (extensible example).
 # NOTE: keep ASCII-only.
 
+# Force UTF-8 output so the GUI (Python) decodes Russian/system text correctly.
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+$OutputEncoding = [System.Text.Encoding]::UTF8
 Write-Host "== Security quick summary =="
 
 $ts = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server' -ErrorAction SilentlyContinue

@@ -29,6 +29,9 @@ param(
     [Parameter(Mandatory = $false)]
     [int]$LicenseCount = 1000
 )
+# Force UTF-8 output so the GUI (Python) decodes Russian/system text correctly.
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+$OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ErrorActionPreference = "Stop"
 

@@ -1,6 +1,9 @@
-# get_system_info.ps1 — reports basic server information.
+# get_system_info.ps1 - reports basic server information.
 # NOTE: keep ASCII-only.
 
+# Force UTF-8 output so the GUI (Python) decodes Russian/system text correctly.
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+$OutputEncoding = [System.Text.Encoding]::UTF8
 $os = Get-CimInstance Win32_OperatingSystem
 $cs = Get-CimInstance Win32_ComputerSystem
 
