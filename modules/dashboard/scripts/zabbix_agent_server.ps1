@@ -88,12 +88,24 @@ try {
 } catch {}
 Say "OK" "local IP: $ip"
 
-# ===================== 1/5 PSK: from server or new ==========================
-$exist = ZApi "host.get" ('{"filter":{"host":["' + $e + '"]},"output":["hostid","tls_psk","tls_psk_identity"]}')
-$hostId = $null; $psk = $null
-if ($exist.Count -gt 0) { $hostId = $exist[0].hostid; if ($exist[0].tls_psk) { $psk = $exist[0].tls_psk } }
-if ($psk) { Say "OK" "host exists (hostid=$hostId), PSK taken from API" }
-else {
+# ===================== 1/5 PSK: keep existing or new ========================
+# The Zabbix API never returns the stored PSK (write-only), so rotating the
+# PSK on every run desyncs agent/server. If the host is registered AND the
+# local PSK file exists, KEEP the file's PSK and re-push it to the server
+# (server := file). Generate a new PSK only when there is nothing to keep.
+$exist = ZApi "host.get" ('{"filter":{"host":["' + $e + '"]},"output":["hostid","tls_psk_identity"]}')
+$hostId = $null
+if (@($exist).Count -gt 0) { $hostId = @($exist)[0].hostid }
+
+$agentDir = Join-Path $env:ProgramFiles "Zabbix Agent 2"
+$pskFile = Join-Path $agentDir "agent2.psk"
+
+$psk = $null
+if ($hostId -and (Test-Path $pskFile)) {
+    $psk = ([System.IO.File]::ReadAllText($pskFile)).Trim()
+    if ($psk) { Say "OK" "host exists (hostid=$hostId): keeping current PSK from agent2.psk (no rotation)" }
+}
+if (-not $psk) {
     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
     $b = New-Object byte[] 32; $rng.GetBytes($b)
     $psk = (($b | ForEach-Object { $_.ToString('x2') }) -join '')
@@ -101,11 +113,9 @@ else {
 }
 
 # ===================== 2/5 PSK file BEFORE msiexec! =========================
-$agentDir = Join-Path $env:ProgramFiles "Zabbix Agent 2"
 New-Item -ItemType Directory -Force -Path $agentDir | Out-Null
-$pskFile = Join-Path $agentDir "agent2.psk"
 [System.IO.File]::WriteAllText($pskFile, $psk)
-Say "OK" "PSK file created: $pskFile"
+Say "OK" "PSK file written: $pskFile"
 
 # ===================== 3/5 MSI download + install ===========================
 $msi = Join-Path $env:TEMP "zabbix_agent2.msi"

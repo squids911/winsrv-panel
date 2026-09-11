@@ -105,12 +105,25 @@ if ($prx.Count -eq 0) { Fail "Proxy '$ProxyName' not found on the server" }
 $proxyId = $prx[0].proxyid
 Say "OK" "proxyid=$proxyId"
 
-# ===================== 2/6 PSK: from server or new ===========================
-$exist = ZApi "host.get" ('{"filter":{"host":["' + $e + '"]},"output":["hostid","tls_psk","tls_psk_identity"]}')
-$hostId = $null; $psk = $null
-if ($exist.Count -gt 0) { $hostId = $exist[0].hostid; if ($exist[0].tls_psk) { $psk = $exist[0].tls_psk } }
-if ($psk) { Say "OK" "host exists (hostid=$hostId), PSK taken from API" }
-else {
+# ===================== 2/6 PSK: keep existing or new ========================
+# The Zabbix API never returns the stored PSK (write-only), so rotating the
+# PSK on every run desyncs agent/proxy until the proxy reloads its config
+# (agent log: "SSL alert number 51"). Instead: if the host is registered AND
+# the local PSK file exists, KEEP the file's PSK and re-push it to the server
+# (server := file). Generate a new PSK only when there is nothing to keep.
+$exist = ZApi "host.get" ('{"filter":{"host":["' + $e + '"]},"output":["hostid","tls_psk_identity"]}')
+$hostId = $null
+if (@($exist).Count -gt 0) { $hostId = @($exist)[0].hostid }
+
+$agentDir = Join-Path $env:ProgramFiles "Zabbix Agent 2"
+$pskFile = Join-Path $agentDir "agent2.psk"
+
+$psk = $null
+if ($hostId -and (Test-Path $pskFile)) {
+    $psk = ([System.IO.File]::ReadAllText($pskFile)).Trim()
+    if ($psk) { Say "OK" "host exists (hostid=$hostId): keeping current PSK from agent2.psk (no rotation)" }
+}
+if (-not $psk) {
     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
     $b = New-Object byte[] 32; $rng.GetBytes($b)
     $psk = (($b | ForEach-Object { $_.ToString('x2') }) -join '')
@@ -118,11 +131,9 @@ else {
 }
 
 # ===================== 3/6 PSK file BEFORE msiexec! =========================
-$agentDir = Join-Path $env:ProgramFiles "Zabbix Agent 2"
 New-Item -ItemType Directory -Force -Path $agentDir | Out-Null
-$pskFile = Join-Path $agentDir "agent2.psk"
 [System.IO.File]::WriteAllText($pskFile, $psk)
-Say "OK" "PSK file created: $pskFile"
+Say "OK" "PSK file written: $pskFile"
 
 # ===================== 4/6 MSI install ======================================
 $msi = Join-Path $env:TEMP "zabbix_agent2.msi"
@@ -193,3 +204,4 @@ if ($hostId) {
 Write-Host ""
 Say "OK" "DONE: $HostName via proxy '$ProxyName' ($ProxyAddr), PSK, '$TplName'"
 Write-Host "[!] ZBX turns green in ~2 min (proxy refresh = 120 s)." -ForegroundColor Yellow
+Write-Host "[!] If the agent log shows 'SSL alert number 51' (proxy still holds an old PSK), restart the Zabbix proxy service once so it reloads PSK config." -ForegroundColor Yellow
