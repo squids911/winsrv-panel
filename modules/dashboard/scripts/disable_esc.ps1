@@ -27,8 +27,11 @@ $userKey  = "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A
 Set-ItemProperty -Path $adminKey -Name "IsInstalled" -Value 0 -ErrorAction SilentlyContinue
 Set-ItemProperty -Path $userKey  -Name "IsInstalled" -Value 0 -ErrorAction SilentlyContinue
 
-# Re-apply so the change takes effect without a reboot.
-& "$env:SystemRoot\System32\rundll32.exe" "$env:SystemRoot\System32\iesetup.dll", IEHardenAdminSettings
-& "$env:SystemRoot\System32\rundll32.exe" "$env:SystemRoot\System32\iesetup.dll", IEHardenUserSettings
+# NOTE: do NOT call rundll32 iesetup.dll IEHardenAdminSettings / IEHardenUserSettings.
+# On servers where IE is removed/stubbed those entry points are missing and the
+# call raises a blocking "RunDLL - entry point not found" dialog. Setting the two
+# IsInstalled=0 values above is sufficient; the change fully applies on the next
+# logon (or after restarting Server Manager).
 
 Write-Host "IE Enhanced Security Configuration (ESC) disabled for Administrators and Users."
+Write-Host "NOTE: the change fully applies on next logon (or restart of Server Manager)."
