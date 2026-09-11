@@ -66,6 +66,11 @@ modules/<id>/scripts/*.ps1       # PowerShell-скрипты
 | Мониторинг | Zabbix Agent 2 — через прокси / напрямую (MSI 7.4.14, PSK, хост через API) |
 | RDS | активация сервера лицензирования · установка CAL (Enterprise) · локальные политики |
 
+Журнал: отметки времени, выделение/копирование (кнопки «Копировать выделенное / всё» и
+правая кнопка мыши → меню). Поле **«KMS-сервер (host[:port])»** в параметрах дашборда —
+если заполнено, активация делает `slmgr /skms <kms>` перед `/ato` (иначе GVLK останется
+в «Notification», пока нет доступного KMS).
+
 Ключи активации Windows (GVLK) зашиты в `activate_os.ps1` и выбираются по версии **и редакции**:
 **2022 Datacenter** → `WX4NM-KYWYW-QJJR4-XV3QB-6VM33`, **2022 Standard** → `VDYBN-27WPP-V4HQT-9VMD4-VMK7H`,
 **2025 Datacenter** → `D764K-2NDRG-47T6Q-P8T8W-YP6DF`, **2025 Standard** → `TVRH6-WHNXV-R9WG3-9XRFY-MY832`.

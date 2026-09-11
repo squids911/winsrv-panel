@@ -67,6 +67,7 @@ class Panel(BasePanel):
             **{tid: ("0", "") for _s, tasks in SECTIONS for (tid, _l, _sc, _a) in tasks},
             "proxyAddr": ("", "IP машины с Zabbix proxy (для ServerActive)"),
             "proxyName": ("TG.SRV-ZABBIX-PROXY", "Имя прокси в Zabbix"),
+            "kmsServer": ("", "KMS-сервер (host[:port]) для активации Windows"),
         },
     }
 
@@ -113,8 +114,8 @@ class Panel(BasePanel):
                     cb.pack(anchor="w", pady=0)
                     self.checks[tid] = cb
 
-        # --- параметры Zabbix (под колонками) -------------------------------
-        zbox = ttk.LabelFrame(parent, text="Параметры Zabbix", padding=(8, 4))
+        # --- параметры (Zabbix и KMS) под колонками --------------------------
+        zbox = ttk.LabelFrame(parent, text="Параметры (Zabbix и KMS)", padding=(8, 4))
         zbox.pack(side="top", fill="x", padx=8, pady=(0, 4))
         zrow = ttk.Frame(zbox)
         zrow.pack(fill="x")
@@ -124,6 +125,12 @@ class Panel(BasePanel):
         ttk.Label(zrow, text="Имя прокси:").pack(side="left")
         self.var_proxy_name = tk.StringVar(value=cfg.get("proxyName", "TG.SRV-ZABBIX-PROXY"))
         ttk.Entry(zrow, textvariable=self.var_proxy_name, width=24).pack(side="left", padx=4)
+
+        zrow2 = ttk.Frame(zbox)
+        zrow2.pack(fill="x", pady=(2, 0))
+        ttk.Label(zrow2, text="KMS-сервер (host[:port]):").pack(side="left")
+        self.var_kms = tk.StringVar(value=cfg.get("kmsServer", ""))
+        ttk.Entry(zrow2, textvariable=self.var_kms, width=28).pack(side="left", padx=4)
 
         # --- нижняя подсказка -----------------------------------------------
         self.lbl_hint = ttk.Label(parent, foreground="#555", anchor="w", padding=(10, 0, 10, 4),
@@ -187,6 +194,7 @@ class Panel(BasePanel):
 
         proxy_addr = self.var_proxy_addr.get().strip()
         proxy_name = self.var_proxy_name.get().strip() or "TG.SRV-ZABBIX-PROXY"
+        kms = self.var_kms.get().strip()
 
         if self.vars["zabbix_proxy"].get() and not proxy_addr:
             messagebox.showwarning("Zabbix",
@@ -203,6 +211,8 @@ class Panel(BasePanel):
                     a = ["-ProxyAddr", proxy_addr, "-ProxyName", proxy_name]
                 elif tid in ("rds_activate", "rds_cals", "rds_policy"):
                     a = self._rds_args(tid)
+                elif tid == "activate":
+                    a = ["-KmsServer", kms]
                 else:
                     a = list(args or [])
                 calls.append((script, a, label))
@@ -221,6 +231,7 @@ class Panel(BasePanel):
             **{tid: ("1" if self.vars[tid].get() else "0") for tid in self.vars},
             "proxyAddr": proxy_addr,
             "proxyName": proxy_name,
+            "kmsServer": kms,
         })
         try:
             self.app.save_config()

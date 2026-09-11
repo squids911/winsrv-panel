@@ -134,9 +134,18 @@ class DeployApp(tk.Tk):
         # Журнал
         logframe = ttk.LabelFrame(self, text="Журнал", padding=4)
         logframe.pack(side="bottom", fill="x", padx=8, pady=(0, 8), ipady=4)
+
+        logbar = ttk.Frame(logframe)
+        logbar.pack(side="top", fill="x", pady=(0, 2))
+        ttk.Button(logbar, text="Копировать выделенное",
+                   command=self._copy_log_sel).pack(side="right", padx=2)
+        ttk.Button(logbar, text="Копировать всё",
+                   command=self._copy_log_all).pack(side="right", padx=2)
+
         self.log_text = scrolledtext.ScrolledText(logframe, wrap="word", state="disabled",
                                                   height=12, font=("Consolas", 9))
         self.log_text.pack(fill="both", expand=True)
+        self.log_text.bind("<Button-3>", self._log_menu)
 
         self.status_var = tk.StringVar(value="Готово.")
         status = ttk.Label(self, textvariable=self.status_var, anchor="w", relief="sunken",
@@ -362,6 +371,46 @@ class DeployApp(tk.Tk):
         self.log_text.insert("end", text)
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
+
+    # ------------------------------------------------------------------ копирование журнала
+    def _copy_log_all(self):
+        """Копирует весь журнал в буфер обмена."""
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(self.log_text.get("1.0", "end"))
+            self.status_var.set("Журнал скопирован в буфер обмена.")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось скопировать журнал: {e}")
+
+    def _copy_log_sel(self):
+        """Копирует выделенный фрагмент журнала (или весь, если нет выделения)."""
+        try:
+            sel = self.log_text.get("sel.first", "sel.last")
+        except Exception:
+            sel = ""
+        if not sel:
+            self._copy_log_all()
+            return
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(sel)
+            self.status_var.set("Выделенный текст скопирован.")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось скопировать: {e}")
+
+    def _select_all_log(self):
+        self.log_text.tag_add("sel", "1.0", "end")
+
+    def _log_menu(self, event):
+        """Контекстное меню журнала (правая кнопка мыши)."""
+        m = tk.Menu(self, tearoff=0)
+        m.add_command(label="Копировать выделенное", command=self._copy_log_sel)
+        m.add_command(label="Выделить всё", command=self._select_all_log)
+        m.add_command(label="Копировать весь журнал", command=self._copy_log_all)
+        try:
+            m.tk_popup(event.x_root, event.y_root)
+        finally:
+            m.grab_release()
 
     # ------------------------------------------------------------------ права
     def _check_admin(self, quiet=True):

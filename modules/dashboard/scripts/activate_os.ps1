@@ -17,7 +17,8 @@ param(
     [string]$Key2022Datacenter = "WX4NM-KYWYW-QJJR4-XV3QB-6VM33",
     [string]$Key2022Standard   = "VDYBN-27WPP-V4HQT-9VMD4-VMK7H",
     [string]$Key2025Datacenter = "D764K-2NDRG-47T6Q-P8T8W-YP6DF",
-    [string]$Key2025Standard   = "TVRH6-WHNXV-R9WG3-9XRFY-MY832"
+    [string]$Key2025Standard   = "TVRH6-WHNXV-R9WG3-9XRFY-MY832",
+    [string]$KmsServer         = ""
 )
 
 # Force UTF-8 so the GUI (Python) decodes Russian/system text correctly.
@@ -106,8 +107,23 @@ if (-not $product) {
     exit 1
 }
 
-Write-Host "Activating Windows (slmgr /ato)..."
 $slmgr = Join-Path $env:SystemRoot "System32\slmgr.vbs"
+
+# If a KMS host is provided, point the KMS client at it (slmgr /skms) so the
+# GVLK key can actually activate. Output captured (not printed) to avoid noise.
+if ($KmsServer -and $KmsServer.Trim() -ne "") {
+    Write-Host ("Setting KMS host: {0}" -f $KmsServer)
+    $skmsOut = & cscript.exe //nologo $slmgr /skms $KmsServer 2>&1 | Out-String
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "KMS host set."
+    } else {
+        Write-Host ("WARNING: slmgr /skms returned exit {0}." -f $LASTEXITCODE)
+    }
+} else {
+    Write-Host "No KMS server provided - skipping /skms (GVLK will need a KMS host to activate)."
+}
+
+Write-Host "Activating Windows (slmgr /ato)..."
 $atoOut = & cscript.exe //nologo $slmgr /ato 2>&1 | Out-String
 $atoCode = $LASTEXITCODE
 $hr = $null
