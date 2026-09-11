@@ -25,6 +25,10 @@ from tkinter import ttk, messagebox, scrolledtext
 import framework as fw
 from framework import BasePanel, get_app_dir, get_resource_dir
 
+# Номер сборки: виден в заголовке окна и в журнале, чтобы по любому
+# скриншоту/логу можно было понять, какой именно EXE запущен.
+BUILD_ID = "2026-09-12 #5"
+
 # Каталог с framework.py (нужен модулям для `from framework import BasePanel`).
 for _p in (get_resource_dir(), get_app_dir()):
     if _p not in sys.path:
@@ -49,7 +53,7 @@ ADMIN_CHECK_CMD = (
 class DeployApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Панель настройки Windows Server 2025")
+        self.title(f"Панель настройки Windows Server 2025 — сборка {BUILD_ID}")
         self.geometry("1040x720")
         self.minsize(900, 640)
 
@@ -69,6 +73,8 @@ class DeployApp(tk.Tk):
         self._frame_shown = None
 
         self._build_ui()
+        self._log(f"Сборка {BUILD_ID}. Номер виден в заголовке окна и здесь — "
+                  f"по нему легко понять, какой EXE запущен.\n")
         # показать первый раздел
         if self.modules:
             self._select(os.path.basename(self.modules[0].src_dir))

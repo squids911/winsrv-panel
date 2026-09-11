@@ -77,9 +77,11 @@ function Invoke-Download([string[]]$urls, [string]$dst, [string]$name, [int]$tim
                 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
             } -ArgumentList $url, $dst
             if (Wait-Job $job -Timeout $timeoutSec) {
+                $jerr = (Receive-Job $job 2>&1 | Out-String).Trim()
                 Remove-Job $job -Force
                 if ((Test-Path $dst) -and (Get-Item $dst).Length -gt 0) { return $true }
                 Write-Host ("  {0} attempt {1} finished but no file was written." -f $name, $i)
+                if ($jerr) { Write-Host ("    download error: " + $jerr) }
             } else {
                 Stop-Job $job -ErrorAction SilentlyContinue
                 Remove-Job $job -Force
