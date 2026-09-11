@@ -44,7 +44,7 @@ class Panel(BasePanel):
         self.btn_refresh = ttk.Button(bar, text="Загрузить список (с сервера)",
                                       command=self._load)
         self.btn_refresh.pack(side="left")
-        self.btn_install = ttk.Button(bar, text="Установить выбранные", command=self._install)
+        self.btn_install = ttk.Button(bar, text="Установить выбранные", command=self._install, style="Accent.TButton")
         self.btn_install.pack(side="left", padx=6)
         self.var_mgmt = tk.BooleanVar(value=self.app.cfg.get("roles", {}).get("includeMgmtTools", "0") == "1")
         ttk.Checkbutton(bar, text="Средства управления",
@@ -79,9 +79,9 @@ class Panel(BasePanel):
         self.tree.column("chk", width=42, anchor="center")
         self.tree.column("name", width=190, anchor="w")
         self.tree.column("status", width=105, anchor="w")
-        self.tree.tag_configure("header", foreground="#0070c0", font=("Segoe UI", 10, "bold"))
-        self.tree.tag_configure("installed", foreground="#0a7a2f")
-        self.tree.tag_configure("notinst", foreground="#333")
+        self.tree.tag_configure("header", foreground="#e8590c", font=("Segoe UI", 10, "bold"))
+        self.tree.tag_configure("installed", foreground="#2f9e44")
+        self.tree.tag_configure("notinst", foreground="#495057")
         pane.add(self.tree, weight=3)
         self.tree.bind("<Button-1>", self._on_click)
         self.tree.bind("<<TreeviewSelect>>", self._on_select)

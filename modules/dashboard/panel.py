@@ -67,7 +67,7 @@ class Panel(BasePanel):
             **{tid: ("0", "") for _s, tasks in SECTIONS for (tid, _l, _sc, _a) in tasks},
             "proxyAddr": ("", "IP машины с Zabbix proxy (для ServerActive)"),
             "proxyName": ("TG.SRV-ZABBIX-PROXY", "Имя прокси в Zabbix"),
-            "kmsServer": ("", "KMS-сервер (host[:port]) для активации Windows"),
+            "kmsServer": ("kms.kini24.ru", "KMS-сервер (host[:port]) для активации Windows"),
         },
     }
 
@@ -81,7 +81,7 @@ class Panel(BasePanel):
         bar.pack(side="top", fill="x")
         ttk.Label(bar, text="Отметьте операции и нажмите «Выполнить выбранное».",
                   font=("Segoe UI", 9, "bold")).pack(side="left")
-        self.btn_run = ttk.Button(bar, text="▶ Выполнить выбранное", command=self._run)
+        self.btn_run = ttk.Button(bar, text="▶ Выполнить выбранное", command=self._run, style="Accent.TButton")
         self.btn_run.pack(side="right")
         ttk.Button(bar, text="Снять всё", command=self._clear_all).pack(side="right", padx=4)
         ttk.Button(bar, text="Выбрать всё", command=self._select_all).pack(side="right", padx=4)
@@ -129,7 +129,7 @@ class Panel(BasePanel):
         zrow2 = ttk.Frame(zbox)
         zrow2.pack(fill="x", pady=(2, 0))
         ttk.Label(zrow2, text="KMS-сервер (host[:port]):").pack(side="left")
-        self.var_kms = tk.StringVar(value=cfg.get("kmsServer", ""))
+        self.var_kms = tk.StringVar(value=cfg.get("kmsServer", "kms.kini24.ru"))
         ttk.Entry(zrow2, textvariable=self.var_kms, width=28).pack(side="left", padx=4)
 
         # --- нижняя подсказка -----------------------------------------------

@@ -8,7 +8,10 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
+    # Position=0 + ValueFromRemainingArguments: features bind whether passed
+    # as '-Features DNS X' or positionally as 'DNS X' (older callers), so the
+    # script can never fail with PositionalParameterNotFound again.
+    [Parameter(Mandatory = $true, Position = 0, ValueFromRemainingArguments = $true)]
     [string[]]$Features,
 
     [switch]$IncludeManagementTools

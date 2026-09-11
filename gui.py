@@ -27,7 +27,18 @@ from framework import BasePanel, get_app_dir, get_resource_dir
 
 # Номер сборки: виден в заголовке окна и в журнале, чтобы по любому
 # скриншоту/логу можно было понять, какой именно EXE запущен.
-BUILD_ID = "2026-09-12 #5"
+BUILD_ID = "2026-09-12 #6"
+
+# Палитра в стиле тулзы миграции почты: тёмные панели, оранжевый акцент,
+# светло-серый фон, чёрная консоль журнала.
+HDR     = "#1b1b1b"   # верхняя/нижняя панели
+ACCENT  = "#e8590c"   # оранжевый акцент
+ACCENT_D = "#d9480f"
+BG      = "#eef1f4"   # фон рабочей области
+CARD    = "#ffffff"   # карточки/поля
+DARKBTN = "#343a40"   # тёмные кнопки
+TEXT    = "#212529"
+BORDER  = "#c6ccd2"
 
 # Каталог с framework.py (нужен модулям для `from framework import BasePanel`).
 for _p in (get_resource_dir(), get_app_dir()):
@@ -56,6 +67,7 @@ class DeployApp(tk.Tk):
         self.title(f"Панель настройки Windows Server 2025 — сборка {BUILD_ID}")
         self.geometry("1040x720")
         self.minsize(900, 640)
+        self._setup_theme()
 
         self.base_dir = BASE_DIR
         self.roles_path = ROLES_PATH
@@ -98,26 +110,68 @@ class DeployApp(tk.Tk):
                 schema.setdefault(section, {}).update(items)
         return schema
 
+    # ------------------------------------------------------------------ тема
+    def _setup_theme(self):
+        """Оформление в палитре тулзы миграции: тёмные панели, оранжевый
+        акцент, светло-серый фон, белые карточки, чёрная консоль журнала."""
+        style = ttk.Style(self)
+        try:
+            style.theme_use("clam")
+        except Exception:
+            pass
+        self.configure(bg=BG)
+        style.configure(".", background=BG, foreground=TEXT, bordercolor=BORDER)
+        style.configure("TFrame", background=BG)
+        style.configure("TLabel", background=BG, foreground=TEXT)
+        style.configure("TCheckbutton", background=BG, foreground=TEXT)
+        style.configure("TRadiobutton", background=BG, foreground=TEXT)
+        style.configure("TEntry", fieldbackground=CARD, bordercolor=BORDER)
+        style.configure("TButton", background=CARD, foreground=TEXT,
+                        bordercolor=BORDER, padding=3)
+        style.map("TButton", background=[("active", "#e9ecef"), ("pressed", "#dee2e6")])
+        style.configure("Accent.TButton", background=ACCENT, foreground="white",
+                        bordercolor=ACCENT, padding=4)
+        style.map("Accent.TButton", background=[("active", ACCENT_D)])
+        style.configure("Dark.TButton", background=DARKBTN, foreground="white",
+                        bordercolor=DARKBTN)
+        style.map("Dark.TButton", background=[("active", "#23272b")])
+        style.configure("TLabelFrame", background=CARD, bordercolor=BORDER, relief="solid")
+        style.configure("TLabelFrame.Label", background=CARD, foreground=TEXT)
+        style.configure("Treeview", background=CARD, fieldbackground=CARD,
+                        foreground=TEXT, bordercolor=BORDER)
+        style.map("Treeview", background=[("selected", ACCENT)],
+                  foreground=[("selected", "white")])
+        style.configure("Horizontal.TProgressbar", troughcolor=BG, background=ACCENT)
+
     # ------------------------------------------------------------------ UI
     def _build_ui(self):
-        top = ttk.Frame(self, padding=(10, 8))
+        top = tk.Frame(self, bg=HDR)
         top.pack(side="top", fill="x")
-        ttk.Label(top, text="Панель настройки Windows Server 2025",
-                  font=("Segoe UI", 13, "bold")).pack(side="left")
+        tk.Label(top, text="Панель настройки Windows Server", bg=HDR, fg="#ffffff",
+                 font=("Segoe UI", 13, "bold")).pack(side="left", padx=(12, 6), pady=9)
+        tk.Label(top, text=f"сборка {BUILD_ID}", bg=HDR, fg=ACCENT,
+                 font=("Segoe UI", 9, "bold")).pack(side="left", pady=9)
 
-        self.btn_admin = ttk.Button(top, text="Проверить права",
-                                    command=lambda: self._check_admin(quiet=False))
-        self.btn_admin.pack(side="right")
-        self.lbl_admin = ttk.Label(top, text="Права: проверка...", foreground="#a05000")
+        self.btn_admin = tk.Button(top, text="Проверить права", bg=DARKBTN, fg="white",
+                                   activebackground="#23272b", activeforeground="white",
+                                   bd=0, padx=10, pady=4,
+                                   command=lambda: self._check_admin(quiet=False))
+        self.btn_admin.pack(side="right", padx=(0, 10), pady=7)
+        self.lbl_admin = tk.Label(top, text="Права: проверка...", bg=HDR, fg="#ffa94d")
         self.lbl_admin.pack(side="right", padx=8)
-        self.btn_elevate = ttk.Button(top, text="Запустить от администратора",
-                                      command=self._relaunch_elevated)
-        self.btn_elevate.pack(side="right", padx=6)
-        self.btn_save = ttk.Button(top, text="Сохранить настройки", command=self.save_config)
-        self.btn_save.pack(side="right", padx=6)
-        self.btn_reset = ttk.Button(top, text="Сбросить настройки",
-                                    command=self.reset_config)
-        self.btn_reset.pack(side="right", padx=6)
+        self.btn_elevate = tk.Button(top, text="Запустить от администратора", bg=ACCENT,
+                                     fg="white", activebackground=ACCENT_D,
+                                     activeforeground="white", bd=0, padx=10, pady=4,
+                                     command=self._relaunch_elevated)
+        self.btn_elevate.pack(side="right", padx=6, pady=7)
+        self.btn_save = tk.Button(top, text="Сохранить настройки", bg=DARKBTN, fg="white",
+                                  activebackground="#23272b", activeforeground="white",
+                                  bd=0, padx=10, pady=4, command=self.save_config)
+        self.btn_save.pack(side="right", padx=6, pady=7)
+        self.btn_reset = tk.Button(top, text="Сбросить настройки", bg=DARKBTN, fg="white",
+                                   activebackground="#23272b", activeforeground="white",
+                                   bd=0, padx=10, pady=4, command=self.reset_config)
+        self.btn_reset.pack(side="right", padx=6, pady=7)
 
         # Основная область: дерево + контент
         main = ttk.Panedwindow(self, orient="horizontal")
@@ -149,13 +203,17 @@ class DeployApp(tk.Tk):
                    command=self._copy_log_all).pack(side="right", padx=2)
 
         self.log_text = scrolledtext.ScrolledText(logframe, wrap="word", state="disabled",
-                                                  height=12, font=("Consolas", 9))
+                                                  height=12, font=("Consolas", 9),
+                                                  bg="#0d0d0d", fg="#e9ecef",
+                                                  insertbackground="#ffffff",
+                                                  selectbackground=ACCENT,
+                                                  border=0, highlightthickness=0)
         self.log_text.pack(fill="both", expand=True)
         self.log_text.bind("<Button-3>", self._log_menu)
 
         self.status_var = tk.StringVar(value="Готово.")
-        status = ttk.Label(self, textvariable=self.status_var, anchor="w", relief="sunken",
-                           padding=(6, 3))
+        status = tk.Label(self, textvariable=self.status_var, anchor="w",
+                          bg=HDR, fg="#f1f3f5", padx=8, pady=4)
         status.pack(side="bottom", fill="x")
 
     def _on_tree_select(self, _event=None):
@@ -466,7 +524,7 @@ class DeployApp(tk.Tk):
             return
 
         if self.is_admin:
-            self.lbl_admin.config(text="Права: администратор", foreground="#0a7a2f")
+            self.lbl_admin.config(text="Права: администратор", foreground="#69db7c")
             try:
                 self.btn_elevate.pack_forget()
             except Exception:
@@ -476,7 +534,7 @@ class DeployApp(tk.Tk):
                 messagebox.showinfo("Права администратора",
                                     "Сеанс запущен от имени администратора.")
         else:
-            self.lbl_admin.config(text="Права: НЕТ (нужен администратор)", foreground="#b00020")
+            self.lbl_admin.config(text="Права: НЕТ (нужен администратор)", foreground="#ff8787")
             try:
                 self.btn_elevate.pack(side="right", padx=6)
             except Exception:
