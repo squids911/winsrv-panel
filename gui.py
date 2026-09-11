@@ -263,10 +263,13 @@ class DeployApp(tk.Tk):
 
     def _run_process_seq(self, cmds):
         """Последовательно запускает список команд PowerShell, складывая вывод
-        в log_queue. В конце отправляет маркер завершения '__DONE__'."""
+        в log_queue. В конце выводит итог по пунктам и отправляет маркер
+        завершения '__DONE__'."""
         total = len(cmds)
+        results = []
         for idx, (cmd, subheader) in enumerate(cmds, 1):
             self.log_queue.put(f"\n{'-' * 66}\n{self._ts()}--- [{idx}/{total}] {subheader} ---\n")
+            rc, err = None, None
             try:
                 proc = subprocess.Popen(
                     cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -279,7 +282,27 @@ class DeployApp(tk.Tk):
                 rc = proc.wait()
                 self.log_queue.put(f"\n{self._ts()}[exit code: {rc}]\n")
             except Exception as e:
+                err = str(e)
                 self.log_queue.put(f"\n[Ошибка запуска PowerShell]: {e}\n")
+            results.append((subheader, rc, err))
+
+        ok = sum(1 for _, rc, err in results if err is None and rc == 0)
+        lines = ["", "=" * 70, f"{self._ts()}ИТОГ ПО ПУНКТАМ:", ""]
+        for subheader, rc, err in results:
+            if err is not None:
+                lines.append(f"  [ОШИБКА] {subheader} — не удалось запустить: {err}")
+            elif rc == 0:
+                lines.append(f"  [ВЫПОЛНЕНО] {subheader}")
+            else:
+                lines.append(f"  [ОШИБКА] {subheader} — код возврата {rc}")
+        lines.append("")
+        tail = f"Выполнено: {ok} из {total}"
+        if ok != total:
+            tail += f", с ошибками: {total - ok}"
+        lines.append(tail)
+        lines.append("=" * 70 + "\n")
+        self.log_queue.put("\n".join(lines))
+        self.log_queue.put(("__SUMMARY__", ok, total))
         self.log_queue.put("__DONE__")
 
     def run_capture(self, panel, script_name, args, on_done):
@@ -307,6 +330,7 @@ class DeployApp(tk.Tk):
         threading.Thread(target=worker, daemon=True).start()
 
     def _run_process(self, cmd):
+        rc = None
         try:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -321,6 +345,7 @@ class DeployApp(tk.Tk):
         except Exception as e:
             self.log_queue.put(f"\n[Ошибка запуска PowerShell]: {e}\n")
         finally:
+            self.log_queue.put(("__SUMMARY__", 1 if rc == 0 else 0, 1))
             self.log_queue.put("__DONE__")
 
     def _poll_log_queue(self):
@@ -330,8 +355,13 @@ class DeployApp(tk.Tk):
                 if item == "__DONE__":
                     self.running = False
                     self._set_busy(False)
-                    self.status_var.set("Операция завершена.")
                     self._log(f"\n{self._ts()}[операция завершена]\n")
+                elif isinstance(item, tuple) and item and item[0] == "__SUMMARY__":
+                    _, ok, total = item
+                    if ok == total:
+                        self.status_var.set(f"Готово: {ok}/{total} выполнено.")
+                    else:
+                        self.status_var.set(f"Готово с ошибками: {ok}/{total} выполнено.")
                 else:
                     self._append_log(item)
         except queue.Empty:

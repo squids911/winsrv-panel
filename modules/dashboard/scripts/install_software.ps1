@@ -48,7 +48,12 @@ function Test-Installed([string[]]$paths, [string[]]$namePatterns) {
 }
 
 function Get-TempFile([string]$name) {
-    return (Join-Path $env:TEMP ($name + "_" + $stamp))
+    # Keep the real extension LAST (npp_<stamp>.exe) so Windows/Start-Process
+    # recognises the file type; a name like "npp.exe_<stamp>" would pop the
+    # "How do you want to open this file?" shell dialog and block the run.
+    $ext  = [System.IO.Path]::GetExtension($name)
+    $base = [System.IO.Path]::GetFileNameWithoutExtension($name)
+    return (Join-Path $env:TEMP ($base + "_" + $stamp + $ext))
 }
 
 # Download inside a background job so a stalled transfer can never hang the run.
@@ -123,7 +128,7 @@ function Install-NotepadPlusPlus {
     if (-not $nppUrl) { $nppUrl = "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.8.8/npp.8.8.8.Installer.x64.exe" }
     $dst = Get-TempFile "npp.exe"
     if (Invoke-Download $nppUrl $dst "Notepad++") {
-        $p = Start-Process $dst -ArgumentList '/S' -PassThru
+        $p = Start-Process -FilePath $dst -ArgumentList '/S' -PassThru -NoNewWindow
         if (-not $p.WaitForExit($InstallTimeoutMs)) { try { $p.Kill() } catch {}; Write-Host "  TIMEOUT: Notepad++ installer killed." }
         else { Write-Host ("  OK: Notepad++ installed (exit {0})." -f $p.ExitCode) }
     } else { Write-Host "  Notepad++: download failed - skipped." }
