@@ -63,6 +63,7 @@ class DeployApp(tk.Tk):
         self.log_queue = queue.Queue()
         self.events_queue = queue.Queue()
         self.running = False
+        self.is_admin = False   # определяется асинхронно при старте (_check_admin)
         self._panel_instances = {}
         self._frame_shown = None
 
@@ -71,6 +72,8 @@ class DeployApp(tk.Tk):
         if self.modules:
             self._select(os.path.basename(self.modules[0].src_dir))
         self.after(100, self._poll_log_queue)
+        # определить права администратора сразу после старта (не блокируя UI)
+        self.after(150, self._check_admin)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     # ------------------------------------------------------------------ модули
@@ -95,9 +98,14 @@ class DeployApp(tk.Tk):
         ttk.Label(top, text="Панель настройки Windows Server 2025",
                   font=("Segoe UI", 13, "bold")).pack(side="left")
 
-        self.btn_admin = ttk.Button(top, text="Проверить права администратора",
-                                    command=self._check_admin)
+        self.btn_admin = ttk.Button(top, text="Проверить права",
+                                    command=lambda: self._check_admin(quiet=False))
         self.btn_admin.pack(side="right")
+        self.lbl_admin = ttk.Label(top, text="Права: проверка...", foreground="#a05000")
+        self.lbl_admin.pack(side="right", padx=8)
+        self.btn_elevate = ttk.Button(top, text="Запустить от администратора",
+                                      command=self._relaunch_elevated)
+        self.btn_elevate.pack(side="right", padx=6)
         self.btn_save = ttk.Button(top, text="Сохранить настройки", command=self.save_config)
         self.btn_save.pack(side="right", padx=6)
         self.btn_reset = ttk.Button(top, text="Сбросить настройки",
@@ -203,6 +211,8 @@ class DeployApp(tk.Tk):
         if self.running:
             messagebox.showinfo("Занято", "Операция уже выполняется. Дождитесь завершения.")
             return
+        if not self._require_admin():
+            return
         script = os.path.join(panel.scripts_dir, script_name)
         if not os.path.exists(script):
             messagebox.showerror("Ошибка", f"Скрипт не найден: {script}")
@@ -221,6 +231,8 @@ class DeployApp(tk.Tk):
         отмеченных галочками задач. Вывод каждого скрипта идёт в общий журнал."""
         if self.running:
             messagebox.showinfo("Занято", "Операция уже выполняется. Дождитесь завершения.")
+            return
+        if not self._require_admin():
             return
         if not calls:
             messagebox.showinfo("Нечего выполнять", "Отметьте галочками хотя бы одну задачу.")
@@ -347,23 +359,89 @@ class DeployApp(tk.Tk):
         self.log_text.configure(state="disabled")
 
     # ------------------------------------------------------------------ права
-    def _check_admin(self):
+    def _check_admin(self, quiet=True):
+        """Определяет, запущена ли панель от администратора. Обновляет флаг
+        self.is_admin, индикатор и видимость кнопки повышения. При quiet=True
+        (автопроверка при старте) не показывает модальные окна."""
         exe = self.cfg.get("powershell", {}).get("exe", "powershell")
         try:
             out = subprocess.run([exe, "-NoProfile", "-Command", ADMIN_CHECK_CMD],
                                  capture_output=True, text=True, timeout=20,
                                  creationflags=fw.CREATE_NO_WINDOW)
-            is_admin = "True" in (out.stdout or "")
+            self.is_admin = "True" in (out.stdout or "")
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось проверить права: {e}")
+            self.is_admin = False
+            if not quiet:
+                messagebox.showerror("Ошибка", f"Не удалось проверить права: {e}")
             return
-        if is_admin:
-            messagebox.showinfo("Права администратора", "Сеанс запущен от имени администратора.")
+
+        if self.is_admin:
+            self.lbl_admin.config(text="Права: администратор", foreground="#0a7a2f")
+            try:
+                self.btn_elevate.pack_forget()
+            except Exception:
+                pass
             self.status_var.set("Права администратора подтверждены.")
+            if not quiet:
+                messagebox.showinfo("Права администратора",
+                                    "Сеанс запущен от имени администратора.")
         else:
-            messagebox.showwarning("Права администратора",
-                                   "Программа запущена БЕЗ прав администратора.\n"
-                                   "Запустите её от имени администратора.")
+            self.lbl_admin.config(text="Права: НЕТ (нужен администратор)", foreground="#b00020")
+            try:
+                self.btn_elevate.pack(side="right", padx=6)
+            except Exception:
+                pass
+            self.status_var.set("Нет прав администратора — операции будут отклонены.")
+            if not quiet:
+                messagebox.showwarning("Права администратора",
+                                       "Программа запущена БЕЗ прав администратора.\n"
+                                       "Нажмите «Запустить от администратора» или перезапустите\n"
+                                       "её от имени администратора.")
+
+    def _require_admin(self):
+        """Возвращает True, если права есть. Иначе предлагает перезапуск
+        от администратора и возвращает False."""
+        if self.is_admin:
+            return True
+        if messagebox.askyesno("Нужны права администратора",
+                               "Панель запущена без прав администратора — операции "
+                               "будут отклонены.\n\nПерезапустить панель от имени "
+                               "администратора сейчас?"):
+            self._relaunch_elevated()
+        return False
+
+    def _relaunch_elevated(self):
+        """Перезапускает панель с повышением прав (UAC) и закрывает текущее окно."""
+        if os.name != "nt":
+            messagebox.showinfo("Повышение прав",
+                                "Автоматическое повышение доступно только в Windows.\n"
+                                "Перезапустите программу от имени администратора.")
+            return
+        try:
+            import ctypes
+            if getattr(sys, "frozen", False):
+                target = sys.executable
+                params = ""
+            else:
+                target = sys.executable
+                params = '"%s"' % os.path.abspath(sys.argv[0])
+            # ShellExecuteW с глаголом "runas" запрашивает UAC. Возврат > 32 = успех.
+            rc = ctypes.windll.shell32.ShellExecuteW(
+                None, "runas", target, params, BASE_DIR, 1)
+            if rc and rc > 32:
+                try:
+                    self.save_config()
+                except Exception:
+                    pass
+                self.destroy()
+            else:
+                messagebox.showwarning("Повышение прав",
+                                       "Не удалось перезапустить от администратора "
+                                       f"(код {rc}).\nЗакройте панель и запустите её "
+                                       "от имени администратора вручную.")
+        except Exception as e:
+            messagebox.showerror("Повышение прав",
+                                 f"Не удалось перезапустить от администратора: {e}")
 
     def _on_close(self):
         try:
