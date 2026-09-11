@@ -18,6 +18,7 @@ import queue
 import subprocess
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
 
@@ -219,7 +220,7 @@ class DeployApp(tk.Tk):
             return
         exe = self.cfg.get("powershell", {}).get("exe", "powershell")
         cmd = [exe, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script] + args
-        self._log(f"\n{'=' * 70}\n=== {header} ===\n")
+        self._log(f"\n{'=' * 70}\n{self._ts()}=== {header} ===\n")
         self.status_var.set(f"Выполняется: {header} ...")
         self._set_busy(True)
         threading.Thread(target=self._run_process, args=(cmd,), daemon=True).start()
@@ -246,7 +247,7 @@ class DeployApp(tk.Tk):
                 return
             cmd = [exe, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script] + list(args)
             cmds.append((cmd, subheader))
-        self._log(f"\n{'=' * 70}\n=== {header} ===\n")
+        self._log(f"\n{'=' * 70}\n{self._ts()}=== {header} ===\n")
         self.status_var.set(f"Выполняется: {header} ...")
         self._set_busy(True)
         threading.Thread(target=self._run_process_seq, args=(cmds,), daemon=True).start()
@@ -256,7 +257,7 @@ class DeployApp(tk.Tk):
         в log_queue. В конце отправляет маркер завершения '__DONE__'."""
         total = len(cmds)
         for idx, (cmd, subheader) in enumerate(cmds, 1):
-            self.log_queue.put(f"\n{'-' * 66}\n--- [{idx}/{total}] {subheader} ---\n")
+            self.log_queue.put(f"\n{'-' * 66}\n{self._ts()}--- [{idx}/{total}] {subheader} ---\n")
             try:
                 proc = subprocess.Popen(
                     cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -267,7 +268,7 @@ class DeployApp(tk.Tk):
                     self.log_queue.put(line)
                 proc.stdout.close()
                 rc = proc.wait()
-                self.log_queue.put(f"\n[exit code: {rc}]\n")
+                self.log_queue.put(f"\n{self._ts()}[exit code: {rc}]\n")
             except Exception as e:
                 self.log_queue.put(f"\n[Ошибка запуска PowerShell]: {e}\n")
         self.log_queue.put("__DONE__")
@@ -321,7 +322,7 @@ class DeployApp(tk.Tk):
                     self.running = False
                     self._set_busy(False)
                     self.status_var.set("Операция завершена.")
-                    self._log("\n[операция завершена]\n")
+                    self._log(f"\n{self._ts()}[операция завершена]\n")
                 else:
                     self._append_log(item)
         except queue.Empty:
@@ -346,6 +347,10 @@ class DeployApp(tk.Tk):
         self.btn_save.configure(state=state)
 
     # ------------------------------------------------------------------ журнал
+    def _ts(self):
+        """Отметка времени для журнала."""
+        return time.strftime("[%H:%M:%S] ")
+
     def _log(self, text):
         self.log_text.configure(state="normal")
         self.log_text.insert("end", text)

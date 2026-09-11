@@ -65,22 +65,33 @@ class Panel(BasePanel):
         self.lbl_count = ttk.Label(srow, text="")
         self.lbl_count.pack(side="right", padx=4)
 
-        # --- Дерево ----------------------------------------------------------
+        # --- Список (слева) + описание (справа), как в Server Manager -------
+        pane = ttk.Panedwindow(parent, orient="horizontal")
+        pane.pack(side="top", fill="both", expand=True, padx=10, pady=(2, 6))
+
         cols = ("chk", "name", "status")
-        self.tree = ttk.Treeview(parent, show="tree headings", columns=cols, selectmode="browse")
+        self.tree = ttk.Treeview(pane, show="tree headings", columns=cols, selectmode="browse")
         self.tree.heading("#0", text="Компонент")
         self.tree.heading("chk", text="")
         self.tree.heading("name", text="Имя (код)")
         self.tree.heading("status", text="Статус")
-        self.tree.column("#0", width=340, anchor="w")
-        self.tree.column("chk", width=46, anchor="center")
-        self.tree.column("name", width=200, anchor="w")
-        self.tree.column("status", width=110, anchor="w")
+        self.tree.column("#0", width=320, anchor="w")
+        self.tree.column("chk", width=42, anchor="center")
+        self.tree.column("name", width=190, anchor="w")
+        self.tree.column("status", width=105, anchor="w")
         self.tree.tag_configure("header", foreground="#0070c0", font=("Segoe UI", 10, "bold"))
         self.tree.tag_configure("installed", foreground="#0a7a2f")
         self.tree.tag_configure("notinst", foreground="#333")
-        self.tree.pack(side="top", fill="both", expand=True, padx=10, pady=(2, 10))
+        pane.add(self.tree, weight=3)
         self.tree.bind("<Button-1>", self._on_click)
+        self.tree.bind("<<TreeviewSelect>>", self._on_select)
+
+        # правая панель описания выбранного компонента
+        dframe = ttk.LabelFrame(pane, text="Описание", padding=6)
+        pane.add(dframe, weight=2)
+        self.details = tk.Text(dframe, wrap="word", state="disabled", relief="flat",
+                               font=("Segoe UI", 9))
+        self.details.pack(fill="both", expand=True)
 
         # --- нижняя строка с подсказкой -------------------------------------
         self.lbl_hint = ttk.Label(parent, foreground="#555", anchor="w", padding=(12, 0, 12, 6),
@@ -169,7 +180,9 @@ class Panel(BasePanel):
                 groups.setdefault(f.get("FeatureType") or "Other", []).append(f)
 
         total = 0
-        for group in sorted(groups.keys()):
+        # Сначала "Роли" (Role), затем "Компоненты" (Feature), остальное - в конце.
+        group_order = {"Role": 0, "Feature": 1}
+        for group in sorted(groups.keys(), key=lambda g: (group_order.get(g, 2), g)):
             feats = groups[group]
             label = {"Role": "Роли", "Feature": "Компоненты"}.get(group, group)
             parent = tree.insert("", "end", text=f"{label}  ({len(feats)})",
@@ -204,6 +217,40 @@ class Panel(BasePanel):
         self.tree.item(iid, values=(CHECK_ON if self.checked[name] else CHECK_OFF,
                                     name, "установлено" if self._installed(name) else "не установлено"))
         self.lbl_count.config(text=f"Отмечено: {sum(self.checked.values())}")
+
+    def _on_select(self, _event=None):
+        """Показывает описание выбранного компонента в правой панели."""
+        sel = self.tree.selection()
+        self.details.configure(state="normal")
+        self.details.delete("1.0", "end")
+        if not sel:
+            self.details.configure(state="disabled")
+            return
+        iid = sel[0]
+        if "f:" not in iid:
+            self.details.configure(state="disabled")
+            return
+        name = iid.split(":", 1)[1]
+        feat = next((f for f in self.features if f.get("Name") == name), None)
+        if not feat:
+            self.details.configure(state="disabled")
+            return
+        status = "установлено" if feat.get("Installed") else "не установлено"
+        lines = [
+            ("Имя", feat.get("DisplayName") or name),
+            ("Код", name),
+            ("Тип", {"Role": "Роль", "Feature": "Компонент"}.get(feat.get("FeatureType"), feat.get("FeatureType") or "-")),
+            ("Статус", status),
+            ("Путь", feat.get("Path") or "-"),
+            ("", ""),
+            ("Описание", feat.get("Description") or "—"),
+        ]
+        for label, value in lines:
+            if label:
+                self.details.insert("end", f"{label}: ", "bold")
+            self.details.insert("end", f"{value}\n")
+        self.details.tag_configure("bold", font=("Segoe UI", 9, "bold"))
+        self.details.configure(state="disabled")
 
     def _installed(self, name):
         for f in self.features:
