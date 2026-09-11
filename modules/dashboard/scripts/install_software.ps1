@@ -93,7 +93,8 @@ if ($haveWinget) {
         @{ id = "7zip.7zip";     name = "7-Zip";         paths = @("$env:ProgramFiles\7-Zip\7z.exe"); pat = @("7-Zip*") },
         @{ id = "Google.Chrome"; name = "Google Chrome"; paths = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe"); pat = @("Google Chrome*") },
         @{ id = "PuTTY.PuTTY";   name = "PuTTY";         paths = @("$env:ProgramFiles\PuTTY\putty.exe"); pat = @("PuTTY*") },
-        @{ id = "WinSCP.WinSCP"; name = "WinSCP";        paths = @("${env:ProgramFiles(x86)}\WinSCP\WinSCP.exe"); pat = @("WinSCP*") }
+        @{ id = "WinSCP.WinSCP"; name = "WinSCP";        paths = @("${env:ProgramFiles(x86)}\WinSCP\WinSCP.exe"); pat = @("WinSCP*") },
+        @{ id = "Notepad++.Notepad++"; name = "Notepad++"; paths = @("$env:ProgramFiles\Notepad++\notepad++.exe"); pat = @("Notepad++*") }
     )
     foreach ($m in $map) {
         if (Test-Installed $m.paths $m.pat) { Write-Host ("  SKIP: {0} already installed." -f $m.name); continue }
@@ -108,17 +109,28 @@ if ($haveWinget) {
         @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe") @("Google Chrome*")
     Install-Msi "https://the.earth.li/~sgtatham/putty/latest/w64/putty-64bit-0.85-installer.msi" "putty" "PuTTY" `
         @("$env:ProgramFiles\PuTTY\putty.exe") @("PuTTY*")
-    # WinSCP is an EXE installer; use the version-agnostic "latest" URL.
-    if (Test-Installed @("${env:ProgramFiles(x86)}\WinSCP\WinSCP.exe") @("WinSCP*")) {
-        Write-Host "  SKIP: WinSCP already installed."
+    # WinSCP MSI (direct link provided by the user).
+    Install-Msi "https://sourceforge.net/projects/winscp/files/WinSCP/6.5.7/WinSCP-6.5.7.msi/download" "winscp" "WinSCP" `
+        @("${env:ProgramFiles(x86)}\WinSCP\WinSCP.exe", "$env:ProgramFiles\WinSCP\WinSCP.exe") @("WinSCP*")
+
+    # Notepad++ - resolve the current x64 installer URL from the official updater
+    # endpoint (version-agnostic), with a fixed-version fallback.
+    if (Test-Installed @("$env:ProgramFiles\Notepad++\notepad++.exe") @("Notepad++*")) {
+        Write-Host "  SKIP: Notepad++ already installed."
     } else {
-        $dst = Get-TempFile "winscp.exe"
-        if (Invoke-Download "https://winscp.net/download/latest/WinSCP-Setup.exe" $dst "WinSCP") {
-            $p = Start-Process $dst -ArgumentList '/VERYSILENT', '/NORESTART' -PassThru
-            if (-not $p.WaitForExit($InstallTimeoutMs)) { try { $p.Kill() } catch {}; Write-Host "  TIMEOUT: WinSCP installer killed." }
-            else { Write-Host ("  OK: WinSCP installed (exit {0})." -f $p.ExitCode) }
+        $nppUrl = $null
+        try {
+            $xml = (Invoke-WebRequest "https://notepad-plus-plus.org/update/getDownloadUrl.php?version=8&param=x64" -UseBasicParsing -TimeoutSec $DownloadTimeoutSec).Content
+            $nppUrl = ([xml]$xml).GUP.Location
+        } catch { Write-Host ("  Notepad++ URL lookup failed: " + $_.Exception.Message) }
+        if (-not $nppUrl) { $nppUrl = "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.8.8/npp.8.8.8.Installer.x64.exe" }
+        $dst = Get-TempFile "npp.exe"
+        if (Invoke-Download $nppUrl $dst "Notepad++") {
+            $p = Start-Process $dst -ArgumentList '/S' -PassThru
+            if (-not $p.WaitForExit($InstallTimeoutMs)) { try { $p.Kill() } catch {}; Write-Host "  TIMEOUT: Notepad++ installer killed." }
+            else { Write-Host ("  OK: Notepad++ installed (exit {0})." -f $p.ExitCode) }
         } else {
-            Write-Host "  WinSCP: download failed - skipped."
+            Write-Host "  Notepad++: download failed - skipped."
         }
         Remove-Item $dst -Force -ErrorAction SilentlyContinue
     }

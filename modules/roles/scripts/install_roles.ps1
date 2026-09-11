@@ -48,7 +48,10 @@ foreach ($feature in $Features) {
     Write-Host ""
     Write-Host ("Installing feature: {0}" -f $feature) -ForegroundColor Yellow
     try {
-        $params = @{ Name = $feature; ErrorAction = "Stop" }
+        # Pass -Name as an ARRAY. On Windows PowerShell 5.1 the cmdlet's
+        # "Name = $Name" default can otherwise mis-bind a single value to a
+        # positional parameter (PositionalParameterNotFound). An array avoids it.
+        $params = @{ Name = @($feature); ErrorAction = "Stop" }
         if ($IncludeManagementTools) { $params.IncludeManagementTools = $true }
 
         $res = Install-WindowsFeature @params
