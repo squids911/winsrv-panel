@@ -108,7 +108,7 @@ class Panel(BasePanel):
                                  "Скрипт get_features.ps1 завершился с ошибкой.")
             return
         try:
-            data = json.loads(out.strip())
+            data = json.loads(self._extract_json(out))
         except Exception as e:
             self.lbl_hint.config(text="Не удалось разобрать список ролей.")
             self.app._append_log(f"\n[Ошибка разбора JSON]: {e}\n{out}\n")
@@ -130,6 +130,24 @@ class Panel(BasePanel):
                      "(Home/Pro/Enterprise): командлет Get-WindowsFeature доступен на "
                      "Windows Server. На сервере/виртуалке список заполнится автоматически.")
         self.app.status_var.set("Список ролей загружен.")
+
+    @staticmethod
+    def _extract_json(out):
+        """Извлекает JSON-подстроку из вывода скрипта, отбрасывая любой
+        посторонний текст до первой '{'/'[' и после последней '}'/']'.
+        Защищает разбор, если PowerShell что-то печатает перед JSON
+        (например, предупреждения или лишние строки)."""
+        text = (out or "").strip()
+        # убрать BOM, если вдруг попал
+        text = text.lstrip("\ufeff")
+        starts = [i for i in (text.find("["), text.find("{")) if i != -1]
+        if not starts:
+            return text
+        start = min(starts)
+        end = max(text.rfind("]"), text.rfind("}"))
+        if end > start:
+            return text[start:end + 1]
+        return text[start:]
 
     def _exists(self, name):
         return any(f.get("Name") == name for f in self.features)

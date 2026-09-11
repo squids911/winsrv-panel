@@ -37,8 +37,8 @@ public static class Win32Codepage {
     [DllImport("kernel32.dll", SetLastError=true)] public static extern bool SetConsoleCP(uint cp);
 }
 '@ -ErrorAction Stop
-    [Win32Codepage]::SetConsoleOutputCP(65001)
-    [Win32Codepage]::SetConsoleCP(65001)
+    [void][Win32Codepage]::SetConsoleOutputCP(65001)
+    [void][Win32Codepage]::SetConsoleCP(65001)
 } catch { }
 
 $ErrorActionPreference = "Stop"
