@@ -214,6 +214,52 @@ class DeployApp(tk.Tk):
         self._set_busy(True)
         threading.Thread(target=self._run_process, args=(cmd,), daemon=True).start()
 
+    def run_scripts(self, panel, calls, header):
+        """Последовательно выполняет НЕСКОЛЬКО скриптов в одном фоновом потоке.
+        calls = [(script_name, args_list, subheader), ...].
+        Используется единым дашбордом: одна кнопка 'Выполнить' для всех
+        отмеченных галочками задач. Вывод каждого скрипта идёт в общий журнал."""
+        if self.running:
+            messagebox.showinfo("Занято", "Операция уже выполняется. Дождитесь завершения.")
+            return
+        if not calls:
+            messagebox.showinfo("Нечего выполнять", "Отметьте галочками хотя бы одну задачу.")
+            return
+        exe = self.cfg.get("powershell", {}).get("exe", "powershell")
+        cmds = []
+        for script_name, args, subheader in calls:
+            script = os.path.join(panel.scripts_dir, script_name)
+            if not os.path.exists(script):
+                messagebox.showerror("Ошибка", f"Скрипт не найден: {script}")
+                return
+            cmd = [exe, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script] + list(args)
+            cmds.append((cmd, subheader))
+        self._log(f"\n{'=' * 70}\n=== {header} ===\n")
+        self.status_var.set(f"Выполняется: {header} ...")
+        self._set_busy(True)
+        threading.Thread(target=self._run_process_seq, args=(cmds,), daemon=True).start()
+
+    def _run_process_seq(self, cmds):
+        """Последовательно запускает список команд PowerShell, складывая вывод
+        в log_queue. В конце отправляет маркер завершения '__DONE__'."""
+        total = len(cmds)
+        for idx, (cmd, subheader) in enumerate(cmds, 1):
+            self.log_queue.put(f"\n{'-' * 66}\n--- [{idx}/{total}] {subheader} ---\n")
+            try:
+                proc = subprocess.Popen(
+                    cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    text=True, encoding="utf-8", errors="replace", bufsize=1,
+                    creationflags=fw.CREATE_NO_WINDOW,
+                )
+                for line in iter(proc.stdout.readline, ""):
+                    self.log_queue.put(line)
+                proc.stdout.close()
+                rc = proc.wait()
+                self.log_queue.put(f"\n[exit code: {rc}]\n")
+            except Exception as e:
+                self.log_queue.put(f"\n[Ошибка запуска PowerShell]: {e}\n")
+        self.log_queue.put("__DONE__")
+
     def run_capture(self, panel, script_name, args, on_done):
         """Запускает скрипт, собирает stdout ПОЛНОСТЬЮ и отдаёт результат
         (rc, stdout, stderr) в callback on_done (выполняется в главном потоке).

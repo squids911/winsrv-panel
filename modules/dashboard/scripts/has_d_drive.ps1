@@ -1,13 +1,8 @@
-# list_users.ps1 - lists local users, groups and members of a target group.
+# has_d_drive.ps1 - prints YES if a local drive D: exists, else NO.
+# Used by the dashboard to enable/disable the "move profiles to D:\Users" task.
 # NOTE: keep ASCII-only.
 
-[CmdletBinding()]
-param(
-    [Parameter(Mandatory = $false)]
-    [string]$Group = ""
-)
 # Force UTF-8 so the GUI (Python) decodes Russian/system text correctly.
-# Also switch the console code page to UTF-8 so native tools (e.g. slmgr via cscript) emit UTF-8.
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::InputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
@@ -22,16 +17,4 @@ public static class Win32Codepage {
     [void][Win32Codepage]::SetConsoleCP(65001)
 } catch { }
 
-$ErrorActionPreference = "Stop"
-
-Write-Host "== Local Users =="
-Get-LocalUser -ErrorAction SilentlyContinue | Format-Table -AutoSize
-
-Write-Host "== Local Groups =="
-Get-LocalGroup -ErrorAction SilentlyContinue | Format-Table -AutoSize
-
-if ($Group -and $Group.Trim() -ne "") {
-    Write-Host ("== Members of group '{0}' ==" -f $Group)
-    Get-LocalGroupMember -Group $Group -ErrorAction SilentlyContinue |
-        Format-Table -AutoSize
-}
+if (Test-Path "D:\") { Write-Output "YES" } else { Write-Output "NO" }
