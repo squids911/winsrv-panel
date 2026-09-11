@@ -65,6 +65,25 @@ function ZApi([string]$method, [string]$params) {
     if ($r.PSObject.Properties.Name -contains 'error') { Fail ("API ERROR: " + ($r.error | ConvertTo-Json -Compress)) }
     return $r.result
 }
+function ZApiSafe([string]$method, [string]$params) {
+    # Like ZApi but returns @{ok; result|err} instead of exiting on API error.
+    $body = '{"jsonrpc":"2.0","method":"' + $method + '","params":' + $params + ',"id":1}'
+    $hdr  = @{ 'Content-Type' = 'application/json-rpc'; 'Authorization' = ('Bearer ' + $ApiToken) }
+    try { $r = Invoke-RestMethod -Uri $ApiUrl -Method Post -Headers $hdr -Body $body -TimeoutSec 30 }
+    catch { return @{ ok = $false; err = $_.Exception.Message } }
+    if ($r.PSObject.Properties.Name -contains 'error') { return @{ ok = $false; err = ($r.error | ConvertTo-Json -Compress) } }
+    return @{ ok = $true; result = $r.result }
+}
+
+# Group lookup tolerant to invisible chars in stored names (e.g. a leading
+# tab): exact filter first, then a trimmed client-side match over ALL groups.
+function Resolve-GroupId([string]$name) {
+    $r = ZApiSafe "hostgroup.get" ('{"filter":{"name":["' + $name + '"]},"output":["groupid","name"]}')
+    if ($r.ok -and $r.result) { $a = @($r.result); if ($a.Count -gt 0) { return $a[0].groupid } }
+    $r = ZApiSafe "hostgroup.get" '{"output":["groupid","name"]}'
+    if ($r.ok) { foreach ($g in @($r.result)) { if ($g.name -and $g.name.Trim() -eq $name) { return $g.groupid } } }
+    return $null
+}
 $e = $HostName -replace '\\', '\\\\' -replace '"', '\"'
 
 Say "OK" "host=$HostName  proxy=$ProxyAddr ($ProxyName)"
@@ -139,20 +158,14 @@ try {
 } catch {}
 
 # ===================== 5/6 group + template via API =========================
-$g = ZApi "hostgroup.get" ('{"filter":{"name":["' + $GroupName + '"]},"output":["groupid"]}')
-if ($g.Count -gt 0) {
-    $gid = $g[0].groupid
-} else {
-    try {
-        $gid = (ZApi "hostgroup.create" ('{"name":"' + $GroupName + '"}')).groupids[0]
-        Say "OK" "group created"
-    } catch {
-        # Race / already exists: look it up again.
-        $g = ZApi "hostgroup.get" ('{"filter":{"name":["' + $GroupName + '"]},"output":["groupid"]}')
-        if ($g.Count -eq 0) { Fail ("Cannot resolve host group '" + $GroupName + "'") }
-        $gid = $g[0].groupid
-    }
+$gid = Resolve-GroupId $GroupName
+if (-not $gid) {
+    $c = ZApiSafe "hostgroup.create" ('{"name":"' + $GroupName + '"}')
+    if ($c.ok) { $gid = @($c.result.groupids)[0]; Say "OK" "group created (groupid=$gid)" }
+    else { Write-Host ("[..] hostgroup.create: " + $c.err); $gid = Resolve-GroupId $GroupName }
 }
+if (-not $gid) { Fail ("Cannot resolve host group '" + $GroupName + "'") }
+Say "OK" "group resolved (groupid=$gid)"
 $t = ZApi "template.get" ('{"filter":{"host":["' + $TplName + '"]},"output":["templateid"]}')
 if ($t.Count -eq 0) {
     $TplName = "Windows by Zabbix agent"
