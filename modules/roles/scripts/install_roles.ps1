@@ -8,7 +8,7 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true, Position = 0)]
+    [Parameter(Mandatory = $true)]
     [string[]]$Features,
 
     [switch]$IncludeManagementTools
@@ -48,13 +48,15 @@ foreach ($feature in $Features) {
     Write-Host ""
     Write-Host ("Installing feature: {0}" -f $feature) -ForegroundColor Yellow
     try {
-        # Pass -Name as an ARRAY. On Windows PowerShell 5.1 the cmdlet's
-        # "Name = $Name" default can otherwise mis-bind a single value to a
-        # positional parameter (PositionalParameterNotFound). An array avoids it.
-        $params = @{ Name = @($feature); ErrorAction = "Stop" }
-        if ($IncludeManagementTools) { $params.IncludeManagementTools = $true }
-
-        $res = Install-WindowsFeature @params
+        # Call with an explicit named -Name bound to an ARRAY (no splat). On
+        # Windows PowerShell 5.1 a single value can otherwise mis-bind to a
+        # positional parameter (PositionalParameterNotFound). An array + named
+        # parameter avoids it entirely.
+        if ($IncludeManagementTools) {
+            $res = Install-WindowsFeature -Name @($feature) -IncludeManagementTools -ErrorAction Stop
+        } else {
+            $res = Install-WindowsFeature -Name @($feature) -ErrorAction Stop
+        }
 
         $restart = $res.RestartNeeded
         if ($res.Success) {

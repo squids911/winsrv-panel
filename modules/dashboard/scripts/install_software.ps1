@@ -94,7 +94,9 @@ if ($haveWinget) {
         @{ id = "Google.Chrome"; name = "Google Chrome"; paths = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe"); pat = @("Google Chrome*") },
         @{ id = "PuTTY.PuTTY";   name = "PuTTY";         paths = @("$env:ProgramFiles\PuTTY\putty.exe"); pat = @("PuTTY*") },
         @{ id = "WinSCP.WinSCP"; name = "WinSCP";        paths = @("${env:ProgramFiles(x86)}\WinSCP\WinSCP.exe"); pat = @("WinSCP*") },
-        @{ id = "Notepad++.Notepad++"; name = "Notepad++"; paths = @("$env:ProgramFiles\Notepad++\notepad++.exe"); pat = @("Notepad++*") }
+        @{ id = "Notepad++.Notepad++"; name = "Notepad++"; paths = @("$env:ProgramFiles\Notepad++\notepad++.exe"); pat = @("Notepad++*") },
+        @{ id = "Famatech.RadminVPN"; name = "Radmin VPN"; paths = @("${env:ProgramFiles(x86)}\Radmin VPN\RadminVPN.exe", "$env:ProgramFiles\Radmin VPN\RadminVPN.exe"); pat = @("Radmin VPN*") },
+        @{ id = "VMware.VMwareTools"; name = "VMware Tools"; paths = @("$env:ProgramFiles\VMware\VMware Tools\vmtoolsd.exe"); pat = @("VMware Tools*") }
     )
     foreach ($m in $map) {
         if (Test-Installed $m.paths $m.pat) { Write-Host ("  SKIP: {0} already installed." -f $m.name); continue }
@@ -131,6 +133,50 @@ if ($haveWinget) {
             else { Write-Host ("  OK: Notepad++ installed (exit {0})." -f $p.ExitCode) }
         } else {
             Write-Host "  Notepad++: download failed - skipped."
+        }
+        Remove-Item $dst -Force -ErrorAction SilentlyContinue
+    }
+
+    # Radmin VPN (EXE installer).
+    if (Test-Installed @("${env:ProgramFiles(x86)}\Radmin VPN\RadminVPN.exe", "$env:ProgramFiles\Radmin VPN\RadminVPN.exe") @("Radmin VPN*")) {
+        Write-Host "  SKIP: Radmin VPN already installed."
+    } else {
+        $dst = Get-TempFile "radminvpn.exe"
+        if (Invoke-Download "https://download.radmin-vpn.com/download/files/Radmin_VPN_2.0.4899.9.exe" $dst "Radmin VPN") {
+            $p = Start-Process $dst -ArgumentList '/VERYSILENT', '/NORESTART' -PassThru
+            if (-not $p.WaitForExit($InstallTimeoutMs)) { try { $p.Kill() } catch {}; Write-Host "  TIMEOUT: Radmin VPN installer killed." }
+            else { Write-Host ("  OK: Radmin VPN installed (exit {0})." -f $p.ExitCode) }
+        } else {
+            Write-Host "  Radmin VPN: download failed - skipped."
+        }
+        Remove-Item $dst -Force -ErrorAction SilentlyContinue
+    }
+
+    # VMware Tools (EXE installer, ~140 MB). Resolve the current file name from
+    # the version-agnostic "latest" directory, with a fixed-version fallback.
+    if (Test-Installed @("$env:ProgramFiles\VMware\VMware Tools\vmtoolsd.exe") @("VMware Tools*")) {
+        Write-Host "  SKIP: VMware Tools already installed."
+    } else {
+        $vmDir = "https://packages.vmware.com/tools/releases/latest/windows/x64/"
+        $vmExe = $null
+        try {
+            $listing = (Invoke-WebRequest $vmDir -UseBasicParsing -TimeoutSec 60).Content
+            if ($listing -match '(VMware-tools-[0-9\.]+-[0-9]+-x64\.exe)') { $vmExe = $Matches[1] }
+        } catch { Write-Host ("  VMware Tools listing failed: " + $_.Exception.Message) }
+        if (-not $vmExe) { $vmExe = "VMware-tools-13.1.5-25544008-x64.exe" }
+        $dst = Get-TempFile "vmware-tools.exe"
+        Write-Host ("  Downloading VMware Tools ({0}, ~140 MB) ..." -f $vmExe)
+        $ok = $false
+        for ($i = 1; $i -le 2; $i++) {
+            try { Invoke-WebRequest -Uri ($vmDir + $vmExe) -OutFile $dst -UseBasicParsing -TimeoutSec 600; $ok = $true; break }
+            catch { Write-Host ("  VMware Tools download attempt {0} failed: {1}" -f $i, $_.Exception.Message); Start-Sleep -Seconds 2 }
+        }
+        if ($ok) {
+            $p = Start-Process $dst -ArgumentList '/S', '/v', '/qn' -PassThru
+            if (-not $p.WaitForExit(600000)) { try { $p.Kill() } catch {}; Write-Host "  TIMEOUT: VMware Tools installer killed." }
+            else { Write-Host ("  OK: VMware Tools installed (exit {0})." -f $p.ExitCode) }
+        } else {
+            Write-Host "  VMware Tools: download failed - skipped."
         }
         Remove-Item $dst -Force -ErrorAction SilentlyContinue
     }
