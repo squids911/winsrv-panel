@@ -126,7 +126,19 @@ try {
 
 # ===================== 4/5 group + template via API =========================
 $g = ZApi "hostgroup.get" ('{"filter":{"name":["' + $GroupName + '"]},"output":["groupid"]}')
-if ($g.Count -gt 0) { $gid = $g[0].groupid } else { $gid = (ZApi "hostgroup.create" ('{"name":"' + $GroupName + '"}')).groupids[0]; Say "OK" "group created" }
+if ($g.Count -gt 0) {
+    $gid = $g[0].groupid
+} else {
+    try {
+        $gid = (ZApi "hostgroup.create" ('{"name":"' + $GroupName + '"}')).groupids[0]
+        Say "OK" "group created"
+    } catch {
+        # Race / already exists: look it up again.
+        $g = ZApi "hostgroup.get" ('{"filter":{"name":["' + $GroupName + '"]},"output":["groupid"]}')
+        if ($g.Count -eq 0) { Fail ("Cannot resolve host group '" + $GroupName + "'") }
+        $gid = $g[0].groupid
+    }
+}
 $t = ZApi "template.get" ('{"filter":{"host":["' + $TplName + '"]},"output":["templateid"]}')
 if ($t.Count -eq 0) {
     $TplName = "Windows by Zabbix agent"
@@ -139,11 +151,14 @@ Say "OK" "group=$gid  template=$TplName ($tid)"
 # ===================== 5/5 host via API (create/update) =====================
 $iface = '{"type":1,"main":1,"useip":1,"ip":"' + $ip + '","dns":"","port":"10050"}'
 $tlsv  = '"tls_connect":2,"tls_accept":2,"tls_psk_identity":"' + $e + '","tls_psk":"' + $psk + '"'
-$base  = '"groups":[{"groupid":"' + $gid + '"}],"templates":[{"templateid":"' + $tid + '"}],"interfaces":[' + $iface + '],' + $tlsv
 if ($hostId) {
-    ZApi "host.update" ('{"hostid":"' + $hostId + '",' + $base + '}') | Out-Null
+    # For an existing host you cannot change host/groups/interfaces. Update only
+    # PSK and link the template (templates_clear removes any other templates).
+    $upd = '{"hostid":"' + $hostId + '",' + $tlsv + ',"templates":[{"templateid":"' + $tid + '"}],"templates_clear":[]}'
+    ZApi "host.update" $upd | Out-Null
     Say "OK" "host updated (hostid=$hostId)"
 } else {
+    $base = '"groups":[{"groupid":"' + $gid + '"}],"templates":[{"templateid":"' + $tid + '"}],"interfaces":[' + $iface + '],' + $tlsv
     $hostId = (ZApi "host.create" ('{"host":"' + $e + '",' + $base + '}')).hostids[0]
     Say "OK" "host created (hostid=$hostId)"
 }

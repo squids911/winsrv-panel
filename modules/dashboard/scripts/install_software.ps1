@@ -3,6 +3,7 @@
 # Strategy:
 #   - skip an app if it is already installed (registry / known paths);
 #   - winget when available, otherwise direct download + silent install;
+#   - unique temp file names + retry, so a leftover/locked file cannot break it;
 #   - every download and installer call has a TIMEOUT so a stuck step cannot
 #     hang the whole run.
 # NOTE: keep ASCII-only.
@@ -30,64 +31,57 @@ $ErrorActionPreference = "Continue"
 
 $DownloadTimeoutSec = 90
 $InstallTimeoutMs   = 180000   # 3 minutes per installer
+$stamp = Get-Date -Format "yyyyMMddHHmmss"
 
 function Test-Installed([string[]]$paths, [string[]]$namePatterns) {
-    foreach ($p in $paths) { if (Test-Path $p) { return $true } }
+    foreach ($p in $paths) { if ($p -and (Test-Path $p)) { return $true } }
     $roots = @(
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
     )
     foreach ($r in $roots) {
-        $items = Get-ItemProperty $r -ErrorAction SilentlyContinue |
-                 Where-Object { $_.DisplayName }
+        $items = Get-ItemProperty $r -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName }
         foreach ($it in $items) {
-            foreach ($pat in $namePatterns) {
-                if ($it.DisplayName -like $pat) { return $true }
-            }
+            foreach ($pat in $namePatterns) { if ($it.DisplayName -like $pat) { return $true } }
         }
     }
     return $false
 }
 
-function Invoke-WithTimeout([scriptblock]$block, [int]$ms, [string]$what) {
-    $job = Start-Job -ScriptBlock $block
-    if (Wait-Job $job -Timeout ($ms / 1000)) {
-        $res = Receive-Job $job
-        Remove-Job $job -Force
-        return $res
-    } else {
-        Stop-Job $job -ErrorAction SilentlyContinue
-        Remove-Job $job -Force
-        Write-Host ("  TIMEOUT: {0} exceeded {1} ms - skipped." -f $what, $ms)
-        return $null
-    }
+function Get-TempFile([string]$name) {
+    # Unique per-run name so a locked/leftover file from a previous run cannot
+    # cause "file is being used by another process".
+    return (Join-Path $env:TEMP ($name + "_" + $stamp))
 }
 
-function Install-Msi([string]$url, [string]$file, [string]$name, [string[]]$paths, [string[]]$patterns, [string]$installerArgs) {
-    if (Test-Installed $paths $patterns) {
-        Write-Host ("  SKIP: {0} already installed." -f $name)
-        return
+function Invoke-Download([string]$url, [string]$dst, [string]$name) {
+    for ($i = 1; $i -le 2; $i++) {
+        try {
+            Write-Host ("  Downloading {0} (attempt {1}) ..." -f $name, $i)
+            Invoke-WebRequest -Uri $url -OutFile $dst -UseBasicParsing -TimeoutSec $DownloadTimeoutSec
+            return $true
+        } catch {
+            Write-Host ("  {0} download attempt {1} failed: {2}" -f $name, $i, $_.Exception.Message)
+            Start-Sleep -Seconds 2
+        }
     }
-    $dst = Join-Path $env:TEMP $file
-    try {
-        Write-Host ("  Downloading {0} ..." -f $name)
-        Invoke-WebRequest -Uri $url -OutFile $dst -UseBasicParsing -TimeoutSec $DownloadTimeoutSec
-    } catch {
-        Write-Host ("  {0} download failed: {1}" -f $name, $_.Exception.Message)
-        return
-    }
-    $argList = $installerArgs -f "`"$dst`""
-    $p = Start-Process msiexec.exe -ArgumentList $argList -PassThru
+    return $false
+}
+
+function Install-Msi([string]$url, [string]$baseName, [string]$name, [string[]]$paths, [string[]]$patterns) {
+    if (Test-Installed $paths $patterns) { Write-Host ("  SKIP: {0} already installed." -f $name); return }
+    $dst = Get-TempFile ($baseName + ".msi")
+    if (-not (Invoke-Download $url $dst $name)) { Write-Host ("  {0}: download failed - skipped." -f $name); return }
+    $p = Start-Process msiexec.exe -ArgumentList '/i', "`"$dst`"", '/qn', '/norestart' -PassThru
     if (-not $p.WaitForExit($InstallTimeoutMs)) {
         try { $p.Kill() } catch {}
         Write-Host ("  TIMEOUT: {0} installer exceeded {1} ms - killed." -f $name, $InstallTimeoutMs)
-        return
-    }
-    if ($p.ExitCode -eq 0 -or $p.ExitCode -eq 3010) {
+    } elseif ($p.ExitCode -eq 0 -or $p.ExitCode -eq 3010) {
         Write-Host ("  OK: {0} installed (exit {1})." -f $name, $p.ExitCode)
     } else {
         Write-Host ("  {0} installer exit {1}." -f $name, $p.ExitCode)
     }
+    Remove-Item $dst -Force -ErrorAction SilentlyContinue
 }
 
 $haveWinget = $false
@@ -104,33 +98,29 @@ if ($haveWinget) {
     foreach ($m in $map) {
         if (Test-Installed $m.paths $m.pat) { Write-Host ("  SKIP: {0} already installed." -f $m.name); continue }
         Write-Host ("  winget install {0} ..." -f $m.id)
-        $blk = [scriptblock]::Create("winget install --id $($m.id) -e --silent --accept-source-agreements --accept-package-agreements")
-        $null = Invoke-WithTimeout $blk $InstallTimeoutMs ("winget " + $m.name)
+        & winget install --id $m.id -e --silent --accept-source-agreements --accept-package-agreements
     }
 } else {
-    Write-Host "winget not found - direct download (skip if installed, with timeouts)."
-    # NOTE: versioned URLs may need updating over time.
-    Install-Msi "https://www.7-zip.org/a/7z2409-x64.msi" "7z.msi" "7-Zip" `
-        @("$env:ProgramFiles\7-Zip\7z.exe") @("7-Zip*") '/i {0} /qn /norestart'
-    Install-Msi "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi" "chrome.msi" "Google Chrome" `
-        @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe") @("Google Chrome*") '/i {0} /qn /norestart'
-    Install-Msi "https://the.earth.li/~sgtatham/putty/latest/w64/putty-64bit-0.81-installer.msi" "putty.msi" "PuTTY" `
-        @("$env:ProgramFiles\PuTTY\putty.exe") @("PuTTY*") '/i {0} /qn /norestart'
-    # WinSCP is an EXE installer.
+    Write-Host "winget not found - direct download (skip if installed, unique temp files, timeouts)."
+    Install-Msi "https://www.7-zip.org/a/7z2409-x64.msi" "7z" "7-Zip" `
+        @("$env:ProgramFiles\7-Zip\7z.exe") @("7-Zip*")
+    Install-Msi "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi" "chrome" "Google Chrome" `
+        @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe") @("Google Chrome*")
+    Install-Msi "https://the.earth.li/~sgtatham/putty/latest/w64/putty-64bit-0.85-installer.msi" "putty" "PuTTY" `
+        @("$env:ProgramFiles\PuTTY\putty.exe") @("PuTTY*")
+    # WinSCP is an EXE installer; use the version-agnostic "latest" URL.
     if (Test-Installed @("${env:ProgramFiles(x86)}\WinSCP\WinSCP.exe") @("WinSCP*")) {
         Write-Host "  SKIP: WinSCP already installed."
     } else {
-        try {
-            $u = "https://winscp.net/download/WinSCP-6.3.5-Setup.exe"
-            $dst = Join-Path $env:TEMP "winscp.exe"
-            Write-Host "  Downloading WinSCP ..."
-            Invoke-WebRequest -Uri $u -OutFile $dst -UseBasicParsing -TimeoutSec $DownloadTimeoutSec
+        $dst = Get-TempFile "winscp.exe"
+        if (Invoke-Download "https://winscp.net/download/latest/WinSCP-Setup.exe" $dst "WinSCP") {
             $p = Start-Process $dst -ArgumentList '/VERYSILENT', '/NORESTART' -PassThru
             if (-not $p.WaitForExit($InstallTimeoutMs)) { try { $p.Kill() } catch {}; Write-Host "  TIMEOUT: WinSCP installer killed." }
             else { Write-Host ("  OK: WinSCP installed (exit {0})." -f $p.ExitCode) }
-        } catch {
-            Write-Host ("  WinSCP failed: " + $_.Exception.Message)
+        } else {
+            Write-Host "  WinSCP: download failed - skipped."
         }
+        Remove-Item $dst -Force -ErrorAction SilentlyContinue
     }
 }
 

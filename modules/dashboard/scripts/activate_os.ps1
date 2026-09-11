@@ -71,6 +71,7 @@ Write-Host ("Detected: Windows Server {0} {1}. Using GVLK: {2}" -f $ver, $editio
 
 # --- helper: map common licensing HRESULTs -----------------------------------
 function Describe-HResult($hr) {
+    if ($null -eq $hr) { return "unknown error (no error code reported)" }
     $h = "0x{0:X8}" -f ([int]$hr -band 0xFFFFFFFF)
     $msg = switch ($h) {
         "0xC004F069" { "product key is not valid for this edition (edition/key mismatch)" }
@@ -87,10 +88,7 @@ function Describe-HResult($hr) {
 $sls = Get-WmiObject -Query "SELECT * FROM SoftwareLicensingService" -ErrorAction SilentlyContinue
 if (-not $sls) { Write-Error "SoftwareLicensingService is not available."; exit 1 }
 
-try {
-    $null = $sls.InstallProductKey($key)
-    Write-Host "Product key installed."
-} catch {
+try { $null = $sls.InstallProductKey($key) | Out-Null; Write-Host "Product key installed." } catch {
     $hr = $null
     if ($_.Exception.Message -match "0x[0-9A-Fa-f]{8}") { $hr = [Convert]::ToInt32($Matches[0], 16) }
     Write-Error ("Failed to install product key: {0}" -f (Describe-HResult $hr))
@@ -98,7 +96,7 @@ try {
     exit 1
 }
 
-try { $sls.RefreshLicenseStatus() } catch { }
+try { $null = $sls.RefreshLicenseStatus() | Out-Null } catch { }
 
 $appId = "55c92734-d682-4d71-983e-d6ec3f16059f"   # Windows OS application id
 $product = Get-WmiObject -Query ("SELECT * FROM SoftwareLicensingProduct WHERE ApplicationID='{0}' AND PartialProductKey IS NOT NULL" -f $appId) -ErrorAction SilentlyContinue
@@ -108,16 +106,18 @@ if (-not $product) {
     exit 1
 }
 
-Write-Host "Activating Windows..."
-try {
-    $null = $product.Activate()
+Write-Host "Activating Windows (slmgr /ato)..."
+$slmgr = Join-Path $env:SystemRoot "System32\slmgr.vbs"
+$atoOut = & cscript.exe //nologo $slmgr /ato 2>&1 | Out-String
+$atoCode = $LASTEXITCODE
+$hr = $null
+if ($atoOut -match "0x[0-9A-Fa-f]{8}") { $hr = [Convert]::ToInt32($Matches[0], 16) }
+if ($atoCode -eq 0) {
     Write-Host "Activation call succeeded."
-} catch {
-    $hr = $null
-    if ($_.Exception.Message -match "0x[0-9A-Fa-f]{8}") { $hr = [Convert]::ToInt32($Matches[0], 16) }
+} else {
     Write-Host ("Activation failed: {0}" -f (Describe-HResult $hr))
-    Write-Host ("Raw error: {0}" -f $_.Exception.Message)
-    Write-Host "NOTE: GVLK keys need a reachable KMS host. Check KMS connectivity, then re-run."
+    Write-Host "NOTE: GVLK keys activate against a KMS host. If no KMS server is"
+    Write-Host "      reachable this is expected - check KMS connectivity, then re-run."
 }
 
 # --- report final status (clean Unicode) -------------------------------------
