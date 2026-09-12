@@ -88,7 +88,7 @@ $returnValue = $result.ReturnValue
 Write-Host ("ReturnValue = {0}  (0 = success)" -f $returnValue)
 
 if ($returnValue -ne 0) {
-    Write-Error ("Failed to install the license key pack. ReturnValue={0}" -f $returnValue)
+    Write-Error ("Failed to install the license key pack. ReturnValue={0} (Is the license server ACTIVATED? CAL packs install only on an activated server - run 'Activate licensing server' first.)" -f $returnValue)
     exit 1
 }
 

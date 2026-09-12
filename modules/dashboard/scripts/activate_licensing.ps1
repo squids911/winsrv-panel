@@ -54,6 +54,15 @@ if (-not $isAdmin.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrato
     exit 1
 }
 
+# --- Country/region candidates --------------------------------------------------
+# The RDS provider and Win32_TSLicenseServer validate the country against the
+# OS-localized list, so on a Russian-MUI server "Belarus" is rejected. Try the
+# localized spelling as well (source stays ASCII via UTF-8 byte literals).
+$countryCandidates = @(
+    $CountryRegion,
+    ([System.Text.Encoding]::UTF8.GetString([byte[]](0xD0,0x91,0xD0,0xB5,0xD0,0xBB,0xD0,0xB0,0xD1,0x80,0xD1,0x83,0xD1,0x81,0xD1,0x8C)))
+)
+
 # --- Licensing service must exist (auto-install the role if missing) -------
 if (-not (Get-Service -Name TermServLicensing -ErrorAction SilentlyContinue)) {
     Write-Host "Remote Desktop Licensing role not found - installing RDS-Licensing..." -ForegroundColor Yellow
@@ -80,7 +89,19 @@ try {
     Set-Item -Path "RDS:\LicenseServer\Configuration\FirstName" -Value $FirstName
     Set-Item -Path "RDS:\LicenseServer\Configuration\LastName" -Value $LastName
     Set-Item -Path "RDS:\LicenseServer\Configuration\Company" -Value $Company
-    Set-Item -Path "RDS:\LicenseServer\Configuration\CountryRegion" -Value $CountryRegion
+
+    $countrySet = $false
+    foreach ($c in $countryCandidates) {
+        try {
+            Set-Item -Path "RDS:\LicenseServer\Configuration\CountryRegion" -Value $c
+            $countrySet = $true
+            Write-Host ("  CountryRegion set to: {0}" -f $c) -ForegroundColor Green
+            break
+        } catch {
+            Write-Host ("  CountryRegion candidate rejected: {0}" -f $c) -ForegroundColor Yellow
+        }
+    }
+    if (-not $countrySet) { Write-Host "  WARNING: no CountryRegion candidate accepted - keeping the current value." -ForegroundColor Yellow }
 
     Write-Host ("Activating license server (ConnectionMethod={0}, Reason={1})..." -f $ConnectionMethod, $Reason) -ForegroundColor Yellow
     Set-Item -Path "RDS:\LicenseServer\ActivationStatus" -Value 1 -ConnectionMethod $ConnectionMethod -Reason $Reason
@@ -101,8 +122,27 @@ if (-not $activated) {
         $ls.FirstName     = $FirstName
         $ls.LastName      = $LastName
         $ls.Company       = $Company
-        $ls.CountryRegion = $CountryRegion
-        $ls.Put() | Out-Null
+        $countrySet = $false
+        foreach ($c in $countryCandidates) {
+            $ls.CountryRegion = $c
+            try {
+                $ls.Put() | Out-Null
+                $countrySet = $true
+                Write-Host ("  CountryRegion set to: {0}" -f $c) -ForegroundColor Green
+                break
+            } catch {
+                Write-Host ("  CountryRegion candidate rejected: {0}" -f $c) -ForegroundColor Yellow
+            }
+        }
+        if (-not $countrySet) {
+            # Last resort: commit org info WITHOUT touching CountryRegion.
+            $ls2 = Get-WmiObject -Class Win32_TSLicenseServer -ErrorAction Stop
+            $ls2.FirstName = $FirstName
+            $ls2.LastName  = $LastName
+            $ls2.Company   = $Company
+            $ls2.Put() | Out-Null
+            Write-Host "  WARNING: CountryRegion left unchanged." -ForegroundColor Yellow
+        }
 
         $null = Invoke-WmiMethod -Class Win32_TSLicenseServer -MethodName ActivateServerAutomatic
 
