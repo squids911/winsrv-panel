@@ -275,7 +275,11 @@ class Panel(BasePanel):
         if messagebox.askyesno("Установка", f"Установить выбранные роли/компоненты?\n\n"
                                             f"Выбрано: {len(selected)}"):
             self.app.set_config("roles", {"includeMgmtTools": "1" if self.var_mgmt.get() else "0"})
-            args = ["-Features"] + selected
+            # PS 5.1 + -File quirk: extra positional values do NOT bind to a
+            # [string[]] param (ValueFromRemainingArguments is ignored), so a
+            # multi-select like DHCP+DNS failed with PositionalParameterNotFound
+            # on the 2nd value. Pass ONE comma-joined string; the script splits.
+            args = ["-Features", ",".join(selected)]
             if self.var_mgmt.get():
                 args.append("-IncludeManagementTools")
             self.app.run_script(self, "install_roles.ps1", args,

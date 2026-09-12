@@ -34,6 +34,17 @@ public static class Win32Codepage {
 
 $ErrorActionPreference = "Continue"
 
+# The GUI passes the selection as ONE comma-joined string (PS 5.1 -File cannot
+# bind several positional values). Expand it back into a flat list here.
+$all = @()
+foreach ($f in $Features) {
+    foreach ($part in ("$f" -split ',')) {
+        $t = $part.Trim()
+        if ($t) { $all += $t }
+    }
+}
+$Features = $all
+
 # --- Admin check -------------------------------------------------------------
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $isAdmin.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
