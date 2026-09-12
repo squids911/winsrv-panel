@@ -70,7 +70,10 @@ class Panel(BasePanel):
         pane.pack(side="top", fill="both", expand=True, padx=10, pady=(2, 6))
 
         cols = ("chk", "name", "status")
-        self.tree = ttk.Treeview(pane, show="tree headings", columns=cols, selectmode="browse")
+        tree_wrap = ttk.Frame(pane)
+        self.tree = ttk.Treeview(tree_wrap, show="tree headings", columns=cols, selectmode="browse")
+        vsb = ttk.Scrollbar(tree_wrap, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=vsb.set)
         self.tree.heading("#0", text="Компонент")
         self.tree.heading("chk", text="")
         self.tree.heading("name", text="Имя (код)")
@@ -82,7 +85,9 @@ class Panel(BasePanel):
         self.tree.tag_configure("header", foreground="#e8590c", font=("Segoe UI", 10, "bold"))
         self.tree.tag_configure("installed", foreground="#2f9e44")
         self.tree.tag_configure("notinst", foreground="#495057")
-        pane.add(self.tree, weight=3)
+        vsb.pack(side="right", fill="y")
+        self.tree.pack(side="left", fill="both", expand=True)
+        pane.add(tree_wrap, weight=3)
         self.tree.bind("<Button-1>", self._on_click)
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
 
@@ -165,6 +170,9 @@ class Panel(BasePanel):
 
     # ------------------------------------------------------------------ дерево
     def _rebuild(self):
+        """Дерево как в Server Manager: сверху группы "Роли"/"Компоненты",
+        внутри — иерархия родитель->подкомпоненты (по полю Parent), всё по
+        алфавиту. При непустом поиске показывается плоский список совпадений."""
         tree = self.tree
         tree.delete(*tree.get_children())
         query = self.var_search.get().strip().lower()
@@ -174,28 +182,60 @@ class Panel(BasePanel):
                 return True
             return query in (f.get("Name") or "").lower() or query in (f.get("DisplayName") or "").lower()
 
-        groups = {}
+        by_name = {f.get("Name"): f for f in self.features if f.get("Name")}
+
+        def display(f):
+            return f.get("DisplayName") or f.get("Name")
+
+        def row_values(f):
+            name = f.get("Name")
+            chk = CHECK_ON if self.checked.get(name) else CHECK_OFF
+            status = "установлено" if f.get("Installed") else "не установлено"
+            tag = "installed" if f.get("Installed") else "notinst"
+            return chk, status, tag
+
+        # карта детей: parent_name -> [feature, ...]
+        children = {}
+        tops = []
         for f in self.features:
-            if match(f):
-                groups.setdefault(f.get("FeatureType") or "Other", []).append(f)
+            p = (f.get("Parent") or "").strip()
+            if p and p != f.get("Name") and p in by_name:
+                children.setdefault(p, []).append(f)
+            else:
+                tops.append(f)
+
+        def insert_node(parent_iid, f):
+            name = f.get("Name")
+            chk, status, tag = row_values(f)
+            iid = "f:" + name
+            tree.insert(parent_iid, "end", iid=iid, text=display(f),
+                        values=(chk, name, status), tags=("item", tag))
+            for child in sorted(children.get(name, []), key=lambda c: display(c).lower()):
+                insert_node(iid, child)
 
         total = 0
-        # Сначала "Роли" (Role), затем "Компоненты" (Feature), остальное - в конце.
-        group_order = {"Role": 0, "Feature": 1}
-        for group in sorted(groups.keys(), key=lambda g: (group_order.get(g, 2), g)):
-            feats = groups[group]
-            label = {"Role": "Роли", "Feature": "Компоненты"}.get(group, group)
-            parent = tree.insert("", "end", text=f"{label}  ({len(feats)})",
-                                 values=("", "", ""), open=True, tags=("header",))
-            for f in feats:
-                name = f.get("Name")
-                chk = CHECK_ON if self.checked.get(name) else CHECK_OFF
-                status = "установлено" if f.get("Installed") else "не установлено"
-                tag = "installed" if f.get("Installed") else "notinst"
-                item_text = f.get("DisplayName") or name
-                tree.insert(parent, "end", iid="f:" + name, text=item_text,
-                            values=(chk, name, status), tags=("item", tag))
+        if query:
+            # плоский список совпадений при поиске
+            for f in sorted((f for f in self.features if match(f)),
+                            key=lambda c: display(c).lower()):
+                chk, status, tag = row_values(f)
+                tree.insert("", "end", iid="f:" + f.get("Name"), text=display(f),
+                            values=(chk, f.get("Name"), status), tags=("item", tag))
                 total += 1
+        else:
+            # иерархия: сначала "Роли" (Role), затем "Компоненты" (Feature)
+            groups = {}
+            for f in tops:
+                groups.setdefault(f.get("FeatureType") or "Other", []).append(f)
+            group_order = {"Role": 0, "Feature": 1}
+            for group in sorted(groups.keys(), key=lambda g: (group_order.get(g, 2), g)):
+                feats = groups[group]
+                label = {"Role": "Роли", "Feature": "Компоненты"}.get(group, group)
+                header = tree.insert("", "end", text=f"{label}  ({len(feats)})",
+                                     values=("", "", ""), open=True, tags=("header",))
+                for f in sorted(feats, key=lambda c: display(c).lower()):
+                    insert_node(header, f)
+            total = len(self.features)
         self.lbl_count.config(text=f"Отмечено: {sum(self.checked.values())} / {total}")
 
     def _on_click(self, event):

@@ -27,6 +27,7 @@ $items = @(Get-WindowsFeature | Where-Object { $_.Name -and $_.FeatureType } | F
         Installed   = ($_.InstallState -eq 1)
         Description = $_.Description
         Path        = $_.Path
+        Parent      = $_.Parent
     }
 })
 
