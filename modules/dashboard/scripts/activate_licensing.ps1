@@ -54,11 +54,20 @@ if (-not $isAdmin.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrato
     exit 1
 }
 
-# --- Licensing service must exist ------------------------------------------
+# --- Licensing service must exist (auto-install the role if missing) -------
 if (-not (Get-Service -Name TermServLicensing -ErrorAction SilentlyContinue)) {
-    Write-Error "The 'Remote Desktop Services > Remote Desktop Licensing' role is NOT installed (TermServLicensing service not found)."
-    Write-Error "Install the role first (Roles & Components tab)."
-    exit 1
+    Write-Host "Remote Desktop Licensing role not found - installing RDS-Licensing..." -ForegroundColor Yellow
+    try {
+        $res = Install-WindowsFeature -Name @("RDS-Licensing") -ErrorAction Stop
+        Write-Host ("  Install-WindowsFeature RDS-Licensing: Success={0}, RestartNeeded={1}" -f $res.Success, $res.RestartNeeded)
+    } catch {
+        Write-Error ("Failed to install RDS-Licensing role: " + $_.Exception.Message)
+        exit 1
+    }
+    if (-not (Get-Service -Name TermServLicensing -ErrorAction SilentlyContinue)) {
+        Write-Error "RDS-Licensing role installed but TermServLicensing service still not found (restart may be required)."
+        exit 1
+    }
 }
 Start-Service -Name TermServLicensing -ErrorAction SilentlyContinue
 
